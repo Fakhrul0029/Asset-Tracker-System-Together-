@@ -42,6 +42,41 @@ def log_activity(user_label, action, asset_serial=None):
         print("ACTIVITY LOG ERROR:", e)
 
 
+def ensure_bootstrap_admin():
+    """Always ensure a working Admin login exists (create or reset password)."""
+    email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
+    password = os.environ.get('BOOTSTRAP_ADMIN_PASSWORD', 'admin123')
+    username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
+    full_name = os.environ.get('BOOTSTRAP_ADMIN_NAME', 'System Administrator')
+
+    hashed = generate_password_hash(password)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    cur.execute(
+        "SELECT id, email FROM users WHERE username = %s OR email = %s",
+        (username, email)
+    )
+    row = cur.fetchone()
+
+    if row:
+        cur.execute("""
+            UPDATE users
+            SET full_name = %s, email = %s, password = %s, role = 'Admin'
+            WHERE id = %s
+        """, (full_name, email, hashed, row['id']))
+    else:
+        cur.execute("""
+            INSERT INTO users (full_name, username, email, password, role)
+            VALUES (%s, %s, %s, %s, 'Admin')
+        """, (full_name, username, email, hashed))
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -72,22 +107,11 @@ def init_db():
         id SERIAL PRIMARY KEY, user_email TEXT, action TEXT,
         asset_serial TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
 
-    cur.execute("SELECT * FROM users WHERE username = %s", ('admin',))
-    if not cur.fetchone():
-        cur.execute(
-            "INSERT INTO users (full_name, username, email, password, role) VALUES (%s,%s,%s,%s,%s)",
-            (
-                'System Administrator',
-                'admin',
-                'admin@jtdi.gov.my',
-                generate_password_hash('admin123'),
-                'Admin'
-            )
-        )
-
     conn.commit()
     cur.close()
     conn.close()
+
+    ensure_bootstrap_admin()
 
 
 init_db()
