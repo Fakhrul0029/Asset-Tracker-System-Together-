@@ -9,45 +9,52 @@
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-dark bg-dark p-3 mb-4">
-        <div class="container d-flex justify-content-between">
+        <DIV class="container d-flex justify-content-between">
             <h4 class="text-white mb-0">Asset View: {{ asset.tracking_number }}</h4>
             <a href="/" class="btn btn-outline-light">Back</a>
-        </div>
+        </DIV>
     </nav>
 
-    <div class="container">
-        <div class="row">
-            <div class="col-md-5">
-                <div class="card p-4 shadow-sm border-0 mb-4">
+    <DIV class="container">
+        <DIV class="row">
+            <DIV class="col-md-5">
+                <DIV class="card p-4 shadow-sm border-0 mb-4">
                     <h5 class="fw-bold text-primary mb-3">Specifications</h5>
                     <p><b>Type:</b> {{ asset.asset_type }}</p>
                     <p><b>Model:</b> {{ asset.cpu_name }}</p>
                     <p><b>Serial:</b> {{ asset.serial_number }}</p>
-                    <p><b>Status:</b> <span class="badge bg-success">{{ asset.status }}</span></p>
+                    <p><b>RAM:</b> {{ asset.ram_size }}</p>
+                    <p><b>Storage:</b> {{ asset.storage_type }}</p>
+                    <p><b>Status:</b>
+                        <span class="badge {{ 'bg-success' if asset.status == 'Working' else 'bg-warning text-dark' if asset.status == 'Maintenance' else 'bg-danger' }}">
+                            {{ asset.status }}
+                        </span>
+                    </p>
                     <p><b>Location:</b> {{ asset.location }}</p>
-                </div>
-            </div>
+                    <p><b>QR Scans:</b> {{ asset.scan_count or 0 }}</p>
+                </DIV>
+            </DIV>
 
-            <div class="col-md-7">
-                <div class="card p-4 shadow-sm border-0">
+            <DIV class="col-md-7">
+                <DIV class="card p-4 shadow-sm border-0">
                     <h5 class="fw-bold text-primary mb-4">Log Maintenance / Problem History</h5>
-                    <div style="max-height: 600px; overflow-y: auto;">
+                    <DIV style="max-height: 600px; overflow-y: auto;">
                         {% for log in logs %}
-                        <div class="log-card border shadow-sm">
-                            <div class="d-flex justify-content-between mb-2">
-                                <span class="badge bg-navy text-white" style="background:#1a2a6c;">{{ log.action_type }}</span>
-                                <small class="text-muted">{{ log.log_date.strftime('%d %b %Y, %H:%M') }}</small>
-                            </div>
+                        <DIV class="log-card border shadow-sm">
+                            <DIV class="d-flex justify-content-between mb-2">
+                                <span class="badge text-white" style="background:#1a2a6c;">{{ log.action_type }}</span>
+                                <small class="text-muted">{{ log.log_date }}</small>
+                            </DIV>
                             <p class="mb-1"><b>Comment:</b> {{ log.comment }}</p>
-                            <small class="text-muted italic">Updated by: {{ log.updated_by }}</small>
-                        </div>
+                            <small class="text-muted">Updated by: {{ log.updated_by }}</small>
+                        </DIV>
                         {% else %}
                         <p class="text-center text-muted py-5">No maintenance history available.</p>
                         {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+                    </DIV>
+                </DIV>
+            </DIV>
+        </DIV>
+    </DIV>
 </body>
 </html>
