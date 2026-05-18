@@ -1,5 +1,6 @@
 import os
 import io
+import traceback
 import qrcode
 import base64
 import psycopg2
@@ -43,7 +44,6 @@ def log_activity(user_label, action, asset_serial=None):
 
 
 def ensure_bootstrap_admin():
-    """Always ensure a working Admin login exists (create or reset password)."""
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
     password = os.environ.get('BOOTSTRAP_ADMIN_PASSWORD', 'admin123')
     username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
@@ -55,7 +55,7 @@ def ensure_bootstrap_admin():
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     cur.execute(
-        "SELECT id, email FROM users WHERE username = %s OR email = %s",
+        "SELECT id FROM users WHERE username = %s OR email = %s",
         (username, email)
     )
     row = cur.fetchone()
@@ -81,40 +81,60 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS assets (
-        id SERIAL PRIMARY KEY, asset_type TEXT, tracking_number TEXT, cpu_name TEXT,
-        serial_number TEXT UNIQUE, ram_size TEXT, storage_type TEXT, location TEXT,
-        status TEXT, is_deleted BOOLEAN DEFAULT FALSE);''')
+    try:
+        cur.execute('''CREATE TABLE IF NOT EXISTS assets (
+            id SERIAL PRIMARY KEY, asset_type TEXT, tracking_number TEXT, cpu_name TEXT,
+            serial_number TEXT UNIQUE, ram_size TEXT, storage_type TEXT, location TEXT,
+            status TEXT, is_deleted BOOLEAN DEFAULT FALSE);''')
 
-    cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
-    cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
-        id SERIAL PRIMARY KEY, asset_id INTEGER REFERENCES assets(id),
-        action_type TEXT, comment TEXT, updated_by TEXT,
-        log_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
+            id SERIAL PRIMARY KEY, asset_id INTEGER REFERENCES assets(id),
+            action_type TEXT, comment TEXT, updated_by TEXT,
+            log_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY, full_name TEXT, username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'User');''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY, full_name TEXT, username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL, password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'User');''')
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
-        id SERIAL PRIMARY KEY, full_name TEXT, email TEXT,
-        login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
+            id SERIAL PRIMARY KEY, full_name TEXT, email TEXT,
+            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
 
-    cur.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
-        id SERIAL PRIMARY KEY, user_email TEXT, action TEXT,
-        asset_serial TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
+        cur.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
+            id SERIAL PRIMARY KEY, user_email TEXT, action TEXT,
+            asset_serial TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);''')
 
-    conn.commit()
-    cur.close()
-    conn.close()
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print("INIT DB ERROR:", e)
+        raise
+    finally:
+        cur.close()
+        conn.close()
 
-    ensure_bootstrap_admin()
+
+def safe_startup():
+    if not DATABASE_URL:
+        print("WARNING: DATABASE_URL is not set. DB init and bootstrap skipped.")
+        return
+    try:
+        init_db()
+        ensure_bootstrap_admin()
+        print(
+            "Startup OK. Bootstrap admin email:",
+            os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my')
+        )
+    except Exception as e:
+        print("STARTUP ERROR:", e)
+        traceback.print_exc()
 
 
-init_db()
+safe_startup()
 
 
 @app.route('/')
