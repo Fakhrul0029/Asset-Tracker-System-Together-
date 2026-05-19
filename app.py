@@ -523,8 +523,8 @@ def export_excel():
     query += " ORDER BY id DESC"
     
     cur.execute(query)
-    rows = cur.fetchall()
     column_names = [desc[0] for desc in cur.description]
+    rows = cur.fetchall()
     
     cur.close()
     conn.close()
@@ -532,8 +532,9 @@ def export_excel():
     df = pd.DataFrame(rows, columns=column_names)
     
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Assets')
+    writer = pd.ExcelWriter(output, engine='openpyxl')
+    df.to_excel(writer, index=False, sheet_name='Assets')
+    writer.close()
     output.seek(0)
 
     return send_file(
