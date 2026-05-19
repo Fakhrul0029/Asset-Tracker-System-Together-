@@ -14,29 +14,15 @@
             border-bottom: 4px solid var(--gold);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
-        .stat-card {
-            border: none;
-            border-radius: 12px;
-            color: white;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-        }
+        .stat-card { border: none; border-radius: 12px; color: white; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
         .stat-card:hover { transform: translateY(-3px); }
         .manage-group {
-            display: inline-flex;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid #dee2e6;
-            background: white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            display: inline-flex; border-radius: 8px; overflow: hidden;
+            border: 1px solid #dee2e6; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
         .manage-group .btn {
-            padding: 0.4rem 1rem;
-            font-size: 0.85rem;
-            font-weight: 500;
-            border-radius: 0;
-            border: none;
-            transition: all 0.2s;
+            padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 500;
+            border-radius: 0; border: none; transition: all 0.2s;
         }
         .btn-view { color: #0d6efd; border-right: 1px solid #dee2e6 !important; }
         .btn-view:hover { background: #f0f7ff; }
@@ -53,101 +39,103 @@
 <body>
 
     <nav class="navbar navbar-dark mb-4 p-3 shadow-sm">
-        <DIV class="container d-flex justify-content-between align-items-center">
+        <div class="container d-flex justify-content-between align-items-center">
             <a class="navbar-brand fw-bold" href="/">
                 <i class="bi bi-cpu-fill me-2 text-warning"></i>JTDI ASSET TRACKER
             </a>
-            <DIV class="text-white small">
+            <div class="text-white small">
                 Welcome, <span class="fw-bold text-warning">{{ session.full_name }}</span>
                 <span class="mx-2">|</span>
                 <a href="/logout" class="text-white text-decoration-none">Logout</a>
-            </DIV>
-        </DIV>
+            </div>
+        </div>
     </nav>
 
-    <DIV class="container">
+    <div class="container">
 
         {% with messages = get_flashed_messages() %}
           {% if messages %}
             {% for message in messages %}
-              <DIV class="alert alert-info alert-dismissible fade show">
+              <div class="alert alert-info alert-dismissible fade show">
                 {{ message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-              </DIV>
+              </div>
             {% endfor %}
           {% endif %}
         {% endwith %}
 
-        <DIV class="row g-4 mb-4 text-center">
-            <DIV class="col-md-3">
-                <DIV class="card stat-card p-3 bg-primary">
+        <div class="row g-4 mb-4 text-center">
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-primary">
                     <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
                     <h2 class="mb-0">{{ total }}</h2>
-                </DIV>
-            </DIV>
-            <DIV class="col-md-3">
-                <DIV class="card stat-card p-3 bg-success">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-success">
                     <h6 class="small fw-bold text-uppercase opacity-75">Working</h6>
                     <h2 class="mb-0">{{ working }}</h2>
-                </DIV>
-            </DIV>
-            <DIV class="col-md-3">
-                <DIV class="card stat-card p-3 bg-warning text-dark">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-warning text-dark">
                     <h6 class="small fw-bold text-uppercase opacity-75">Maintenance</h6>
                     <h2 class="mb-0">{{ maint }}</h2>
-                </DIV>
-            </DIV>
-            <DIV class="col-md-3">
-                <DIV class="card stat-card p-3 bg-danger">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-danger">
                     <h6 class="small fw-bold text-uppercase opacity-75">Faulty</h6>
                     <h2 class="mb-0">{{ faulty }}</h2>
-                </DIV>
-            </DIV>
-        </DIV>
+                </div>
+            </div>
+        </div>
 
-        <DIV class="card p-4 mb-4 shadow-sm border-0 rounded-4">
+        <div class="card p-4 mb-4 shadow-sm border-0 rounded-4">
             <form method="GET" action="/" class="row g-3 align-items-end">
-                <DIV class="col-md-4">
-                    <label class="form-label small fw-bold text-muted">Search Asset</label>
-                    <input type="text" name="search" class="form-control" placeholder="S/N, ID, or Model..." value="{{ s_query }}">
-                </DIV>
-                <DIV class="col-md-3">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Search</label>
+                    <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, location..." value="{{ s_query }}">
+                </div>
+                <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Category</label>
                     <select name="category" class="form-select">
-                        <option value="">All Categories</option>
+                        <option value="">All</option>
                         <option value="Laptop" {{ 'selected' if c_filter == 'Laptop' }}>Laptop</option>
                         <option value="PC" {{ 'selected' if c_filter == 'PC' }}>PC / Desktop</option>
                         <option value="Monitor" {{ 'selected' if c_filter == 'Monitor' }}>Monitor</option>
                         <option value="Printer" {{ 'selected' if c_filter == 'Printer' }}>Printer</option>
                     </select>
-                </DIV>
-                <DIV class="col-md-5">
-                    <DIV class="btn-group w-100 shadow-sm">
+                </div>
+                <div class="col-md-5">
+                    <div class="btn-group w-100 shadow-sm flex-wrap">
                         <button type="submit" class="btn btn-primary fw-bold">FILTER</button>
-                        <a href="/export/excel" class="btn btn-success fw-bold">EXPORT EXCEL</a>
-                    </DIV>
-                </DIV>
+                        <a href="/export" class="btn btn-outline-primary fw-bold">CSV</a>
+                        <a href="/export/excel" class="btn btn-success fw-bold">EXCEL</a>
+                    </div>
+                </div>
             </form>
-        </DIV>
+        </div>
 
-        <DIV class="d-flex justify-content-between align-items-center mb-3 px-1">
-            <h5 class="fw-bold mb-0 text-dark">Inventory Directory</h5>
-            <DIV class="btn-group shadow-sm">
+        <div class="d-flex justify-content-between align-items-center mb-3 px-1 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0 text-dark">Inventory</h5>
+            <div class="btn-group shadow-sm flex-wrap">
                 {% if session.role == 'Admin' %}
-                    <a href="/admin/users" class="btn btn-warning btn-sm fw-bold border-end border-dark">USERS</a>
+                    <a href="/admin" class="btn btn-warning btn-sm fw-bold">ADMIN</a>
+                    <a href="/admin/users" class="btn btn-outline-warning btn-sm fw-bold">USERS</a>
                     <a href="/admin/logs" class="btn btn-info btn-sm text-white fw-bold">LOGS</a>
                 {% endif %}
                 <a href="/activity" class="btn btn-dark btn-sm fw-bold text-white">ACTIVITY</a>
-                <a href="/add" class="btn btn-success btn-sm fw-bold">+ NEW ENTRY</a>
-            </DIV>
-        </DIV>
+                <a href="/add" class="btn btn-success btn-sm fw-bold">+ NEW</a>
+            </div>
+        </div>
 
-        <DIV class="table-container">
-            <DIV class="table-responsive">
+        <div class="table-container">
+            <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-4 py-3">Tracking ID</th>
+                            <th class="ps-4 py-3">Tracking</th>
                             <th>Details</th>
                             <th>Status</th>
                             <th class="text-center">Manage</th>
@@ -163,7 +151,7 @@
                                 {% endif %}
                             </td>
                             <td>
-                                <DIV class="fw-bold">{{ row.cpu_name }}</DIV>
+                                <div class="fw-bold">{{ row.cpu_name }}</div>
                                 <small class="text-muted">S/N: {{ row.serial_number }}</small>
                             </td>
                             <td>
@@ -172,30 +160,30 @@
                                 </span>
                             </td>
                             <td class="text-center">
-                                <DIV class="manage-group">
-                                    <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details">View</a>
-                                    <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset">Edit</a>
-                                    <a href="/qr/{{ row.id }}" class="btn btn-qr" title="QR Code">QR</a>
+                                <div class="manage-group">
+                                    <a href="/view/{{ row.id }}" class="btn btn-view">View</a>
+                                    <a href="/edit/{{ row.id }}" class="btn btn-edit">Edit</a>
+                                    <a href="/qr/{{ row.id }}" class="btn btn-qr">QR</a>
                                     {% if not row.is_deleted %}
-                                    <form action="/delete/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Archive this asset? It will be hidden from Users but visible to Admins.');">
-                                        <button type="submit" class="btn btn-del" title="Delete Asset">Del</button>
+                                    <form action="/delete/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Archive this asset?');">
+                                        <button type="submit" class="btn btn-del">Del</button>
                                     </form>
                                     {% endif %}
-                                </DIV>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-            </DIV>
+            </div>
             {% if not data %}
-            <DIV class="p-5 text-center text-muted">
+            <div class="p-5 text-center text-muted">
                 <i class="bi bi-clipboard-x fs-1"></i>
-                <p class="mt-2">No inventory records found.</p>
-            </DIV>
+                <p class="mt-2">No records.</p>
+            </div>
             {% endif %}
-        </DIV>
-    </DIV>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
