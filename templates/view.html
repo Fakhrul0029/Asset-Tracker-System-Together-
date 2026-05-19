@@ -9,16 +9,16 @@
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-dark bg-dark p-3 mb-4">
-        <DIV class="container d-flex justify-content-between">
-            <h4 class="text-white mb-0">Asset View: {{ asset.tracking_number }}</h4>
+        <div class="container d-flex justify-content-between">
+            <h4 class="text-white mb-0">Asset: {{ asset.tracking_number }}</h4>
             <a href="/" class="btn btn-outline-light">Back</a>
-        </DIV>
+        </div>
     </nav>
 
-    <DIV class="container">
-        <DIV class="row">
-            <DIV class="col-md-5">
-                <DIV class="card p-4 shadow-sm border-0 mb-4">
+    <div class="container">
+        <div class="row">
+            <div class="col-md-5">
+                <div class="card p-4 shadow-sm border-0 mb-4">
                     <h5 class="fw-bold text-primary mb-3">Specifications</h5>
                     <p><b>Type:</b> {{ asset.asset_type }}</p>
                     <p><b>Model:</b> {{ asset.cpu_name }}</p>
@@ -31,30 +31,33 @@
                         </span>
                     </p>
                     <p><b>Location:</b> {{ asset.location }}</p>
-                    <p><b>QR Scans:</b> {{ asset.scan_count or 0 }}</p>
-                </DIV>
-            </DIV>
+                    <p><b>QR scans:</b> {{ asset.scan_count or 0 }}</p>
+                    <hr>
+                    <h6 class="fw-bold">Description</h6>
+                    <p class="text-muted">{{ asset.description or 'No description.' }}</p>
+                </div>
+            </div>
 
-            <DIV class="col-md-7">
-                <DIV class="card p-4 shadow-sm border-0">
-                    <h5 class="fw-bold text-primary mb-4">Log Maintenance / Problem History</h5>
-                    <DIV style="max-height: 600px; overflow-y: auto;">
+            <div class="col-md-7">
+                <div class="card p-4 shadow-sm border-0">
+                    <h5 class="fw-bold text-primary mb-4">Maintenance history</h5>
+                    <div style="max-height: 600px; overflow-y: auto;">
                         {% for log in logs %}
-                        <DIV class="log-card border shadow-sm">
-                            <DIV class="d-flex justify-content-between mb-2">
+                        <div class="log-card border shadow-sm">
+                            <div class="d-flex justify-content-between mb-2">
                                 <span class="badge text-white" style="background:#1a2a6c;">{{ log.action_type }}</span>
                                 <small class="text-muted">{{ log.log_date }}</small>
-                            </DIV>
+                            </div>
                             <p class="mb-1"><b>Comment:</b> {{ log.comment }}</p>
-                            <small class="text-muted">Updated by: {{ log.updated_by }}</small>
-                        </DIV>
+                            <small class="text-muted">By: {{ log.updated_by }}</small>
+                        </div>
                         {% else %}
-                        <p class="text-center text-muted py-5">No maintenance history available.</p>
+                        <p class="text-center text-muted py-5">No maintenance history.</p>
                         {% endfor %}
-                    </DIV>
-                </DIV>
-            </DIV>
-        </DIV>
-    </DIV>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
