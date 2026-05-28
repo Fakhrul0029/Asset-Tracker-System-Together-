@@ -311,7 +311,8 @@ def ensure_bootstrap_admin() -> None:
     password = os.environ.get('BOOTSTRAP_ADMIN_PASSWORD', 'admin123')
     username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
     full_name = os.environ.get('BOOTSTRAP_ADMIN_NAME', 'System Administrator')
-    hashed = generate_password_hash(password)
+    # Store password in plain text for project convenience
+    # (Remove this for production - use hashing instead)
 
     with db_cursor(dict_cursor=True) as (cur, conn):
         cur.execute(
@@ -324,12 +325,12 @@ def ensure_bootstrap_admin() -> None:
                 UPDATE users
                 SET full_name = %s, email = %s, password = %s, role = 'Admin'
                 WHERE id = %s
-            """, (full_name, email, hashed, row['id']))
+            """, (full_name, email, password, row['id']))
         else:
             cur.execute("""
                 INSERT INTO users (full_name, username, email, password, role)
                 VALUES (%s, %s, %s, %s, 'Admin')
-            """, (full_name, username, email, hashed))
+            """, (full_name, username, email, password))
 
 
 def init_db() -> None:
@@ -487,7 +488,9 @@ def login():
                 cur.execute("SELECT * FROM users WHERE email = %s", (email,))
                 user = cur.fetchone()
 
-                if user and check_password_hash(user['password'], password):
+                # Check plain text password for project convenience
+                # (Remove this for production - use check_password_hash instead)
+                if user and user['password'] == password:
                     # Clear login attempts on successful login
                     if email in login_attempts:
                         del login_attempts[email]
@@ -993,10 +996,8 @@ def manage_users():
             role = 'User'
         
         password = request.form.get('password', '')
-        # Validate password complexity
-        valid, error_msg = validate_password_complexity(password)
-        if not valid:
-            raise ValidationError(error_msg)
+        # Store password in plain text for project convenience
+        # (Remove this for production - use hashing instead)
         
         with db_cursor(dict_cursor=True) as (cur, conn):
             cur.execute("""
@@ -1006,7 +1007,7 @@ def manage_users():
                 request.form.get('full_name') or request.form.get('username'),
                 request.form.get('username'),
                 request.form.get('email', '').strip().lower(),
-                generate_password_hash(password),
+                password,  # Storing plain text for project
                 role
             ))
             app.logger.info(f"User created: {request.form.get('email')}")
@@ -1028,11 +1029,8 @@ def edit_user(id: int):
             new_password = request.form.get('password', '').strip()
 
             if new_password:
-                # Validate password complexity
-                valid, error_msg = validate_password_complexity(new_password)
-                if not valid:
-                    raise ValidationError(error_msg)
-                
+                # Store password in plain text for project convenience
+                # (Remove this for production - use hashing instead)
                 cur.execute("""
                     UPDATE users SET full_name=%s, email=%s, role=%s, password=%s
                     WHERE id=%s
@@ -1040,7 +1038,7 @@ def edit_user(id: int):
                     request.form.get('full_name'),
                     request.form.get('email', '').strip().lower(),
                     role,
-                    generate_password_hash(new_password),
+                    new_password,  # Storing plain text for project
                     id
                 ))
             else:
@@ -1055,14 +1053,14 @@ def edit_user(id: int):
 
             app.logger.info(f"User updated: {id}")
             flash("User updated.")
-            return redirect(url_for('manage_users'))
+            return redirect(url_for('admin_dashboard'))
 
         cur.execute("SELECT * FROM users WHERE id = %s", (id,))
         user = cur.fetchone()
 
     if not user:
         flash("User not found.")
-        return redirect(url_for('manage_users'))
+        return redirect(url_for('admin_dashboard'))
 
     return render_template('edit_user.html', user=user)
 
