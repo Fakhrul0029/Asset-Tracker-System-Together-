@@ -251,6 +251,7 @@
                                     <a href="/qr/{{ row.id }}" class="btn btn-qr">QR</a>
                                     {% if row.assigned_to %}
                                         <form action="/checkin/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Check in this asset?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit" class="btn btn-checkin" title="Check In">In</button>
                                         </form>
                                     {% else %}
@@ -317,6 +318,7 @@
                 <div class="modal-body">
                     <p><strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})</p>
                     <form action="/checkout/{{ row.id }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <div class="mb-3">
                             <label class="form-label">Assign To</label>
                             <input type="text" name="assigned_to" class="form-control" placeholder="Enter name or staff ID" required>
@@ -405,6 +407,14 @@
                     const form = document.createElement('form');
                     form.method = 'POST';
                     form.action = `/delete/${id}`;
+                    
+                    // Add CSRF token
+                    const csrfInput = document.createElement('input');
+                    csrfInput.type = 'hidden';
+                    csrfInput.name = 'csrf_token';
+                    csrfInput.value = '{{ csrf_token() }}';
+                    form.appendChild(csrfInput);
+                    
                     document.body.appendChild(form);
                     form.submit();
                 }
