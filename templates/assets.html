@@ -81,6 +81,9 @@
                     <i class="bi bi-cpu-fill me-2 text-warning"></i>JTDI ASSET TRACKER
                 </a>
                 <a href="/dashboard" class="btn btn-sm btn-outline-warning ms-2">Dashboard</a>
+                {% if session.role == 'Admin' %}
+                <a href="/admin" class="btn btn-sm btn-outline-warning ms-2">Admin</a>
+                {% endif %}
             </div>
             <div class="text-white small">
                 Welcome, <span class="fw-bold text-warning">{{ session.full_name }}</span>
