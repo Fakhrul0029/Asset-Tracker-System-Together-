@@ -982,7 +982,19 @@ def admin_dashboard():
         cur.execute("SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 100")
         login_logs = cur.fetchall()
 
-    return render_template('admin.html', users=users, access_logs=access_logs, login_logs=login_logs)
+        # Asset analytics data
+        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY asset_type")
+        asset_type_data = {row['asset_type'] or 'Unknown': row['count'] for row in cur.fetchall()}
+        
+        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY location")
+        asset_location_data = {row['location'] or 'Unknown': row['count'] for row in cur.fetchall()}
+        
+        cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+        asset_status_data = {row['status'] or 'Unknown': row['count'] for row in cur.fetchall()}
+
+    return render_template('admin.html', users=users, access_logs=access_logs, login_logs=login_logs,
+                           asset_type_data=asset_type_data, asset_location_data=asset_location_data,
+                           asset_status_data=asset_status_data)
 
 
 @app.route('/admin/users', methods=['GET', 'POST'])
