@@ -32,6 +32,10 @@
                 Welcome, <span class="fw-bold text-warning">{{ session.full_name }}</span>
                 <span class="mx-2">|</span>
                 <a href="/" class="text-white text-decoration-none">Assets</a>
+                {% if session.role == 'Admin' %}
+                <span class="mx-2">|</span>
+                <a href="/admin" class="text-white text-decoration-none">Admin</a>
+                {% endif %}
                 <span class="mx-2">|</span>
                 <a href="/logout" class="text-white text-decoration-none">Logout</a>
             </div>
