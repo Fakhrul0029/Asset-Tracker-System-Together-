@@ -106,12 +106,18 @@ def init_db():
             description TEXT,
             is_deleted BOOLEAN DEFAULT FALSE,
             scan_count INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            assigned_to TEXT,
+            checkout_date TIMESTAMP,
+            checkout_by TEXT
         );''')
 
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
             id SERIAL PRIMARY KEY,
@@ -180,6 +186,51 @@ def safe_startup():
 safe_startup()
 
 
+@app.route('/dashboard')
+def dashboard():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+
+    # Get statistics
+    cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
+    total = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Working' AND is_deleted = FALSE")
+    working = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Maintenance' AND is_deleted = FALSE")
+    maint = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Faulty' AND is_deleted = FALSE")
+    faulty = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) FROM assets WHERE assigned_to IS NOT NULL AND is_deleted = FALSE")
+    checked_out = cur.fetchone()['count']
+    
+    # Assets by type
+    cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY asset_type")
+    by_type = cur.fetchall()
+    
+    # Assets by location
+    cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY location")
+    by_location = cur.fetchall()
+    
+    # Recent activity
+    cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
+    recent_activity = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+
+    return render_template('dashboard.html', 
+                         total=total, working=working, maint=maint, faulty=faulty, 
+                         checked_out=checked_out, by_type=by_type, by_location=by_location,
+                         recent_activity=recent_activity)
+
+
 @app.route('/')
 def index():
     if 'user' not in session:
@@ -187,16 +238,26 @@ def index():
 
     s = request.args.get('search', '').strip()
     c = request.args.get('category', '').strip()
+    sort = request.args.get('sort', 'id')
+    order = request.args.get('order', 'desc')
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
     query = "SELECT * FROM assets WHERE 1=1"
+    count_query = "SELECT COUNT(*) FROM assets WHERE 1=1"
     params = []
     if session.get('role') != 'Admin':
         query += " AND is_deleted = FALSE"
+        count_query += " AND is_deleted = FALSE"
     if s:
         query += (
+            " AND (serial_number ILIKE %s OR tracking_number ILIKE %s "
+            "OR cpu_name ILIKE %s OR location ILIKE %s)"
+        )
+        count_query += (
             " AND (serial_number ILIKE %s OR tracking_number ILIKE %s "
             "OR cpu_name ILIKE %s OR location ILIKE %s)"
         )
@@ -204,21 +265,40 @@ def index():
         params.extend([p, p, p, p])
     if c:
         query += " AND asset_type = %s"
+        count_query += " AND asset_type = %s"
         params.append(c)
 
-    cur.execute(query + " ORDER BY id DESC", tuple(params))
+    # Get total count for pagination
+    cur.execute(count_query, tuple(params))
+    total = cur.fetchone()['count']
+    
+    # Add sorting
+    valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type']
+    if sort not in valid_sorts:
+        sort = 'id'
+    order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
+    query += f" ORDER BY {sort} {order_dir}"
+    
+    # Add pagination
+    offset = (page - 1) * per_page
+    query += f" LIMIT {per_page} OFFSET {offset}"
+    
+    cur.execute(query, tuple(params))
     data = cur.fetchall()
 
     stats = {
-        'total': len(data),
+        'total': total,
         'working': len([r for r in data if r['status'] == 'Working']),
         'maint': len([r for r in data if r['status'] == 'Maintenance']),
         'faulty': len([r for r in data if r['status'] == 'Faulty'])
     }
+    
+    total_pages = (total + per_page - 1) // per_page
     cur.close()
     conn.close()
 
-    return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c)
+    return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
+                         sort=sort, order=order, page=page, total_pages=total_pages, per_page=per_page)
 
 
 @app.route('/edit/<int:id>', methods=['GET', 'POST'])
@@ -345,6 +425,75 @@ def qr_code(id):
     return render_template('qr_display.html', qr_code=qr_b64, asset=asset)
 
 
+@app.route('/checkout/<int:id>', methods=['POST'])
+def checkout_asset(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    assigned_to = request.form.get('assigned_to', '').strip()
+    if not assigned_to:
+        flash("Please specify who is checking out this asset.")
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
+    row = cur.fetchone()
+    
+    cur.execute("""
+        UPDATE assets SET 
+            assigned_to = %s,
+            checkout_date = %s,
+            checkout_by = %s
+        WHERE id = %s
+    """, (assigned_to, datetime.now(), session.get('full_name'), id))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if row:
+        log_activity(
+            session.get('email') or session.get('full_name'),
+            f"ASSET CHECKED OUT TO {assigned_to}",
+            row['serial_number']
+        )
+    flash(f"Asset checked out to {assigned_to}.")
+    return redirect(url_for('index'))
+
+
+@app.route('/checkin/<int:id>', methods=['POST'])
+def checkin_asset(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT serial_number, assigned_to FROM assets WHERE id = %s", (id,))
+    row = cur.fetchone()
+    
+    cur.execute("""
+        UPDATE assets SET 
+            assigned_to = NULL,
+            checkout_date = NULL,
+            checkout_by = NULL
+        WHERE id = %s
+    """, (id,))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    if row:
+        log_activity(
+            session.get('email') or session.get('full_name'),
+            f"ASSET CHECKED IN FROM {row['assigned_to'] or 'unknown'}",
+            row['serial_number']
+        )
+    flash("Asset checked in successfully.")
+    return redirect(url_for('index'))
+
+
 @app.route('/delete/<int:id>', methods=['POST'])
 def delete_asset(id):
     if 'user' not in session:
@@ -443,7 +592,7 @@ def login():
             cur.close()
             conn.close()
             log_access(user['email'], "LOGIN")
-            return redirect(url_for('index'))
+            return redirect(url_for('dashboard'))
 
         cur.close()
         conn.close()
