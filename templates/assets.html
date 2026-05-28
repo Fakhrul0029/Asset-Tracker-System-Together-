@@ -30,19 +30,31 @@
         .btn-edit:hover { background: #f8f9fa; }
         .btn-qr { background: #212529 !important; color: white !important; }
         .btn-qr:hover { background: #000 !important; }
+        .btn-checkout { color: #198754; border-right: 1px solid #dee2e6 !important; }
+        .btn-checkout:hover { background: #f0fff4; }
+        .btn-checkin { color: #fd7e14; border-right: 1px solid #dee2e6 !important; }
+        .btn-checkin:hover { background: #fff4e6; }
         .btn-del { color: #dc3545; border-left: 1px solid #dee2e6 !important; }
         .btn-del:hover { background: #fff5f5; }
         .row-deleted { background-color: #fff8f8 !important; border-left: 5px solid #dc3545 !important; opacity: 0.85; }
+        .row-checkedout { background-color: #f0fff4 !important; border-left: 5px solid #198754 !important; }
         .table-container { background: white; border-radius: 15px; box-shadow: 0 4px 25px rgba(0,0,0,0.05); }
+        .sortable { cursor: pointer; user-select: none; }
+        .sortable:hover { background-color: #f8f9fa; }
+        .sortable i { opacity: 0.3; }
+        .sortable:hover i { opacity: 1; }
     </style>
 </head>
 <body>
 
     <nav class="navbar navbar-dark mb-4 p-3 shadow-sm">
         <div class="container d-flex justify-content-between align-items-center">
-            <a class="navbar-brand fw-bold" href="/">
-                <i class="bi bi-cpu-fill me-2 text-warning"></i>JTDI ASSET TRACKER
-            </a>
+            <div>
+                <a class="navbar-brand fw-bold" href="/dashboard">
+                    <i class="bi bi-cpu-fill me-2 text-warning"></i>JTDI ASSET TRACKER
+                </a>
+                <a href="/dashboard" class="btn btn-sm btn-outline-warning ms-2">Dashboard</a>
+            </div>
             <div class="text-white small">
                 Welcome, <span class="fw-bold text-warning">{{ session.full_name }}</span>
                 <span class="mx-2">|</span>
@@ -93,11 +105,11 @@
 
         <div class="card p-4 mb-4 shadow-sm border-0 rounded-4">
             <form method="GET" action="/" class="row g-3 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Search</label>
                     <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, location..." value="{{ s_query }}">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label class="form-label small fw-bold text-muted">Category</label>
                     <select name="category" class="form-select">
                         <option value="">All</option>
@@ -107,7 +119,26 @@
                         <option value="Printer" {{ 'selected' if c_filter == 'Printer' }}>Printer</option>
                     </select>
                 </div>
-                <div class="col-md-5">
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold text-muted">Sort By</label>
+                    <select name="sort" class="form-select">
+                        <option value="id" {{ 'selected' if sort == 'id' }}>ID</option>
+                        <option value="tracking_number" {{ 'selected' if sort == 'tracking_number' }}>Tracking</option>
+                        <option value="cpu_name" {{ 'selected' if sort == 'cpu_name' }}>Model</option>
+                        <option value="serial_number" {{ 'selected' if sort == 'serial_number' }}>Serial</option>
+                        <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
+                        <option value="location" {{ 'selected' if sort == 'location' }}>Location</option>
+                        <option value="asset_type" {{ 'selected' if sort == 'asset_type' }}>Type</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold text-muted">Order</label>
+                    <select name="order" class="form-select">
+                        <option value="desc" {{ 'selected' if order == 'desc' }}>Descending</option>
+                        <option value="asc" {{ 'selected' if order == 'asc' }}>Ascending</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
                     <div class="btn-group w-100 shadow-sm flex-wrap">
                         <button type="submit" class="btn btn-primary fw-bold">FILTER</button>
                         <a href="/export" class="btn btn-outline-primary fw-bold">CSV</a>
@@ -118,7 +149,7 @@
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3 px-1 flex-wrap gap-2">
-            <h5 class="fw-bold mb-0 text-dark">Inventory</h5>
+            <h5 class="fw-bold mb-0 text-dark">Inventory ({{ total }} total)</h5>
             <div class="btn-group shadow-sm flex-wrap">
                 {% if session.role == 'Admin' %}
                     <a href="/admin" class="btn btn-warning btn-sm fw-bold">ADMIN</a>
@@ -135,15 +166,22 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-4 py-3">Tracking</th>
-                            <th>Details</th>
-                            <th>Status</th>
+                            <th class="ps-4 py-3 sortable" onclick="window.location.href='/?sort=tracking_number&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                                Tracking <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th class="sortable" onclick="window.location.href='/?sort=cpu_name&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                                Details <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th class="sortable" onclick="window.location.href='/?sort=status&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                                Status <i class="bi bi-arrow-down-up"></i>
+                            </th>
+                            <th>Assigned To</th>
                             <th class="text-center">Manage</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in data %}
-                        <tr class="{{ 'row-deleted' if row.is_deleted else '' }}">
+                        <tr class="{{ 'row-deleted' if row.is_deleted else '' }} {{ 'row-checkedout' if row.assigned_to else '' }}">
                             <td class="ps-4 fw-bold text-primary">
                                 {{ row.tracking_number }}
                                 {% if row.is_deleted %}
@@ -153,21 +191,37 @@
                             <td>
                                 <div class="fw-bold">{{ row.cpu_name }}</div>
                                 <small class="text-muted">S/N: {{ row.serial_number }}</small>
+                                <br><small class="text-muted">{{ row.asset_type }} | {{ row.location }}</small>
                             </td>
                             <td>
                                 <span class="badge {{ 'bg-success' if row.status == 'Working' else 'bg-warning text-dark' if row.status == 'Maintenance' else 'bg-danger' }} shadow-sm">
                                     {{ row.status }}
                                 </span>
                             </td>
+                            <td>
+                                {% if row.assigned_to %}
+                                    <span class="badge bg-success">{{ row.assigned_to }}</span>
+                                    <br><small class="text-muted">{{ row.checkout_date.strftime('%Y-%m-%d') if row.checkout_date else '' }}</small>
+                                {% else %}
+                                    <span class="text-muted small">Available</span>
+                                {% endif %}
+                            </td>
                             <td class="text-center">
                                 <div class="manage-group">
                                     <a href="/view/{{ row.id }}" class="btn btn-view">View</a>
                                     <a href="/edit/{{ row.id }}" class="btn btn-edit">Edit</a>
                                     <a href="/qr/{{ row.id }}" class="btn btn-qr">QR</a>
+                                    {% if row.assigned_to %}
+                                        <form action="/checkin/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Check in this asset?');">
+                                            <button type="submit" class="btn btn-checkin" title="Check In">In</button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" class="btn btn-checkout" data-bs-toggle="modal" data-bs-target="#checkoutModal{{ row.id }}" title="Check Out">Out</button>
+                                    {% endif %}
                                     {% if not row.is_deleted %}
-                                    <form action="/delete/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Archive this asset?');">
-                                        <button type="submit" class="btn btn-del">Del</button>
-                                    </form>
+                                        <form action="/delete/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Archive this asset?');">
+                                            <button type="submit" class="btn btn-del">Del</button>
+                                        </form>
                                     {% endif %}
                                 </div>
                             </td>
@@ -183,7 +237,62 @@
             </div>
             {% endif %}
         </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="/?page={{ page - 1 }}&search={{ s_query }}&category={{ c_filter }}&sort={{ sort }}&order={{ order }}">Previous</a>
+                    </li>
+                {% endif %}
+                
+                {% for p in range(1, total_pages + 1) %}
+                    {% if p == page %}
+                        <li class="page-item active"><a class="page-link" href="#">{{ p }}</a></li>
+                    {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 1 and p <= page + 1) %}
+                        <li class="page-item"><a class="page-link" href="/?page={{ p }}&search={{ s_query }}&category={{ c_filter }}&sort={{ sort }}&order={{ order }}">{{ p }}</a></li>
+                    {% elif p == 4 or p == total_pages - 3 %}
+                        <li class="page-item disabled"><a class="page-link" href="#">...</a></li>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if page < total_pages %}
+                    <li class="page-item">
+                        <a class="page-link" href="/?page={{ page + 1 }}&search={{ s_query }}&category={{ c_filter }}&sort={{ sort }}&order={{ order }}">Next</a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
     </div>
+
+    <!-- Checkout Modals -->
+    {% for row in data %}
+    {% if not row.assigned_to %}
+    <div class="modal fade" id="checkoutModal{{ row.id }}" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Check Out Asset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})</p>
+                    <form action="/checkout/{{ row.id }}" method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Assign To</label>
+                            <input type="text" name="assigned_to" class="form-control" placeholder="Enter name or staff ID" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Check Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
