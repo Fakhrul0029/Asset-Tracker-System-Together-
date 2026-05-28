@@ -170,6 +170,21 @@
     </div>
 
     <script>
+        // Session timeout warning (warn 5 minutes before expiry)
+        const sessionTimeout = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
+        const warningTime = 5 * 60 * 1000; // 5 minutes before expiry
+        let warningShown = false;
+
+        setTimeout(() => {
+            if (!warningShown) {
+                warningShown = true;
+                if (confirm('Your session will expire in 5 minutes. Do you want to extend it?')) {
+                    // Reload page to extend session
+                    window.location.reload();
+                }
+            }
+        }, sessionTimeout - warningTime);
+
         // Assets by Type Chart
         const typeCtx = document.getElementById('typeChart').getContext('2d');
         new Chart(typeCtx, {
