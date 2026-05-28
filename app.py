@@ -130,10 +130,10 @@ def log_access(email, action):
 
 def ensure_bootstrap_admin():
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
-    password = os.environ.get('BOOTSTRAP_ADMIN_PASSWORD', 'admin123')
+    password = 'Admin123'  # Fixed password for system administrator
     username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
     full_name = os.environ.get('BOOTSTRAP_ADMIN_NAME', 'System Administrator')
-    hashed = generate_password_hash(password)
+    # Store password in plain text for project convenience
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -147,12 +147,12 @@ def ensure_bootstrap_admin():
             UPDATE users
             SET full_name = %s, email = %s, password = %s, role = 'Admin'
             WHERE id = %s
-        """, (full_name, email, hashed, row['id']))
+        """, (full_name, email, password, row['id']))
     else:
         cur.execute("""
             INSERT INTO users (full_name, username, email, password, role)
             VALUES (%s, %s, %s, %s, 'Admin')
-        """, (full_name, username, email, hashed))
+        """, (full_name, username, email, password))
     conn.commit()
     cur.close()
     conn.close()
