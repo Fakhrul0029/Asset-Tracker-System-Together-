@@ -220,6 +220,15 @@
         <!-- Analytics Tab -->
         <div class="tab-pane fade" id="analytics" role="tabpanel">
             <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart me-2"></i>Asset Analytics</h5>
+            
+            <!-- Debug Info -->
+            <div class="alert alert-info mb-3">
+                <strong>Debug Info:</strong><br>
+                Asset Type Data: {{ asset_type_data }}<br>
+                Asset Location Data: {{ asset_location_data }}<br>
+                Asset Status Data: {{ asset_status_data }}
+            </div>
+            
             <div class="row">
                 <div class="col-md-4 mb-4">
                     <div class="card">
@@ -303,70 +312,86 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     // Asset Analytics Charts
-    const assetTypeData = {{ asset_type_data | tojson }};
-    const assetLocationData = {{ asset_location_data | tojson }};
-    const assetStatusData = {{ asset_status_data | tojson }};
+    const assetTypeData = {{ asset_type_data | tojson if asset_type_data else {} }};
+    const assetLocationData = {{ asset_location_data | tojson if asset_location_data else {} }};
+    const assetStatusData = {{ asset_status_data | tojson if asset_status_data else {} }};
+
+    console.log('Asset Type Data:', assetTypeData);
+    console.log('Asset Location Data:', assetLocationData);
+    console.log('Asset Status Data:', assetStatusData);
 
     // Asset By Type Chart
-    const ctxType = document.getElementById('assetTypeChart').getContext('2d');
-    new Chart(ctxType, {
-        type: 'pie',
-        data: {
-            labels: Object.keys(assetTypeData),
-            datasets: [{
-                data: Object.values(assetTypeData),
-                backgroundColor: ['#1a2a6c', '#203a43', '#ffc107', '#28a745', '#dc3545', '#6c757d']
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'bottom' }
+    if (Object.keys(assetTypeData).length > 0) {
+        const ctxType = document.getElementById('assetTypeChart').getContext('2d');
+        new Chart(ctxType, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(assetTypeData),
+                datasets: [{
+                    data: Object.values(assetTypeData),
+                    backgroundColor: ['#1a2a6c', '#203a43', '#ffc107', '#28a745', '#dc3545', '#6c757d']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
             }
-        }
-    });
+        });
+    } else {
+        document.getElementById('assetTypeChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
+    }
 
     // Asset By Location Chart
-    const ctxLocation = document.getElementById('assetLocationChart').getContext('2d');
-    new Chart(ctxLocation, {
-        type: 'bar',
-        data: {
-            labels: Object.keys(assetLocationData),
-            datasets: [{
-                label: 'Count',
-                data: Object.values(assetLocationData),
-                backgroundColor: '#1a2a6c'
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false }
+    if (Object.keys(assetLocationData).length > 0) {
+        const ctxLocation = document.getElementById('assetLocationChart').getContext('2d');
+        new Chart(ctxLocation, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(assetLocationData),
+                datasets: [{
+                    label: 'Count',
+                    data: Object.values(assetLocationData),
+                    backgroundColor: '#1a2a6c'
+                }]
             },
-            scales: {
-                y: { beginAtZero: true }
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                }
             }
-        }
-    });
+        });
+    } else {
+        document.getElementById('assetLocationChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
+    }
 
     // Asset Status Distribution Chart
-    const ctxStatus = document.getElementById('assetStatusChart').getContext('2d');
-    new Chart(ctxStatus, {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(assetStatusData),
-            datasets: [{
-                data: Object.values(assetStatusData),
-                backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d']
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'bottom' }
+    if (Object.keys(assetStatusData).length > 0) {
+        const ctxStatus = document.getElementById('assetStatusChart').getContext('2d');
+        new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(assetStatusData),
+                datasets: [{
+                    data: Object.values(assetStatusData),
+                    backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
             }
-        }
-    });
+        });
+    } else {
+        document.getElementById('assetStatusChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
+    }
 </script>
 </body>
 </html>
