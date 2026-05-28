@@ -4,7 +4,6 @@
     <title>Admin Panel - JTDI Asset Tracker</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --navy: #1a2a6c; --gold: #ffc107; --light: #f8f9fa; }
         body { background-color: var(--light); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
@@ -221,20 +220,23 @@
         <div class="tab-pane fade" id="analytics" role="tabpanel">
             <h5 class="fw-bold mb-3"><i class="bi bi-bar-chart me-2"></i>Asset Analytics</h5>
             
-            <!-- Debug Info -->
-            <div class="alert alert-info mb-3">
-                <strong>Debug Info:</strong><br>
-                Asset Type Data: {{ asset_type_data }}<br>
-                Asset Location Data: {{ asset_location_data }}<br>
-                Asset Status Data: {{ asset_status_data }}
-            </div>
-            
             <div class="row">
                 <div class="col-md-4 mb-4">
                     <div class="card">
                         <div class="card-header fw-bold">Asset By Type</div>
                         <div class="card-body">
-                            <canvas id="assetTypeChart"></canvas>
+                            {% if asset_type_data %}
+                                <ul class="list-group">
+                                    {% for type, count in asset_type_data.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ type }}
+                                        <span class="badge bg-primary rounded-pill">{{ count }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No data available</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -242,7 +244,18 @@
                     <div class="card">
                         <div class="card-header fw-bold">Asset By Location</div>
                         <div class="card-body">
-                            <canvas id="assetLocationChart"></canvas>
+                            {% if asset_location_data %}
+                                <ul class="list-group">
+                                    {% for location, count in asset_location_data.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ location }}
+                                        <span class="badge bg-primary rounded-pill">{{ count }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No data available</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -250,7 +263,18 @@
                     <div class="card">
                         <div class="card-header fw-bold">Asset Status Distribution</div>
                         <div class="card-body">
-                            <canvas id="assetStatusChart"></canvas>
+                            {% if asset_status_data %}
+                                <ul class="list-group">
+                                    {% for status, count in asset_status_data.items() %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        {{ status }}
+                                        <span class="badge bg-primary rounded-pill">{{ count }}</span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                <p class="text-muted">No data available</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -310,88 +334,5 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    // Asset Analytics Charts
-    const assetTypeData = {{ asset_type_data | tojson if asset_type_data else {} }};
-    const assetLocationData = {{ asset_location_data | tojson if asset_location_data else {} }};
-    const assetStatusData = {{ asset_status_data | tojson if asset_status_data else {} }};
-
-    console.log('Asset Type Data:', assetTypeData);
-    console.log('Asset Location Data:', assetLocationData);
-    console.log('Asset Status Data:', assetStatusData);
-
-    // Asset By Type Chart
-    if (Object.keys(assetTypeData).length > 0) {
-        const ctxType = document.getElementById('assetTypeChart').getContext('2d');
-        new Chart(ctxType, {
-            type: 'pie',
-            data: {
-                labels: Object.keys(assetTypeData),
-                datasets: [{
-                    data: Object.values(assetTypeData),
-                    backgroundColor: ['#1a2a6c', '#203a43', '#ffc107', '#28a745', '#dc3545', '#6c757d']
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'bottom' }
-                }
-            }
-        });
-    } else {
-        document.getElementById('assetTypeChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
-    }
-
-    // Asset By Location Chart
-    if (Object.keys(assetLocationData).length > 0) {
-        const ctxLocation = document.getElementById('assetLocationChart').getContext('2d');
-        new Chart(ctxLocation, {
-            type: 'bar',
-            data: {
-                labels: Object.keys(assetLocationData),
-                datasets: [{
-                    label: 'Count',
-                    data: Object.values(assetLocationData),
-                    backgroundColor: '#1a2a6c'
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { display: false }
-                },
-                scales: {
-                    y: { beginAtZero: true }
-                }
-            }
-        });
-    } else {
-        document.getElementById('assetLocationChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
-    }
-
-    // Asset Status Distribution Chart
-    if (Object.keys(assetStatusData).length > 0) {
-        const ctxStatus = document.getElementById('assetStatusChart').getContext('2d');
-        new Chart(ctxStatus, {
-            type: 'doughnut',
-            data: {
-                labels: Object.keys(assetStatusData),
-                datasets: [{
-                    data: Object.values(assetStatusData),
-                    backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#6c757d']
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: { position: 'bottom' }
-                }
-            }
-        });
-    } else {
-        document.getElementById('assetStatusChart').parentElement.innerHTML = '<p class="text-center text-muted">No asset data available</p>';
-    }
-</script>
 </body>
 </html>
