@@ -3,115 +3,199 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Asset - JTDI Tracker</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <title>Edit Asset - JTDI Asset Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        :root { --navy: #1a2a6c; --gold: #ffc107; --light: #f4f7f6; }
-        body { background-color: var(--light); font-family: 'Inter', sans-serif; }
-        .navbar { background: var(--navy); border-bottom: 4px solid var(--gold); }
-        .card { border-radius: 15px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .form-label { font-weight: 600; color: #444; font-size: 0.9rem; }
-        .btn-update { background-color: var(--navy); color: white; font-weight: bold; }
-        .btn-update:hover { background-color: #121d4d; color: white; }
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .navbar-brand {
+            font-weight: 600;
+        }
+        .card {
+            border: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 10px;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px 10px 0 0 !important;
+            font-weight: 600;
+        }
+        .form-label {
+            font-weight: 500;
+            color: #333;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+        }
+        .btn-primary:hover {
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
-
-    <nav class="navbar navbar-dark p-3 mb-4 shadow-sm">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="/">JTDI ASSET TRACKER</a>
-            <a href="/" class="btn btn-outline-light btn-sm">Cancel &amp; Exit</a>
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="bi bi-box-seam"></i> JTDI Asset Tracker
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('index') }}">
+                            <i class="bi bi-list-check"></i> Assets
+                        </a>
+                    </li>
+                    {% if session.role == 'Admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                            <i class="bi bi-gear"></i> Admin
+                        </a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">
+                            <i class="bi bi-box-arrow-right"></i> Logout
+                        </a>
+                    </li>
+                </ul>
+            </div>
         </div>
     </nav>
 
-    <div class="container mb-5">
+    <div class="container mt-4">
         <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card p-4">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h4 class="fw-bold mb-0 text-primary">Edit Asset</h4>
-                        <span class="badge bg-dark p-2">S/N: {{ asset.serial_number }}</span>
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-pencil-square"></i> Edit Asset
                     </div>
-
-                    <form method="POST">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Asset Category</label>
-                                <select name="asset_type" class="form-select">
-                                    <option value="Laptop" {% if asset.asset_type == 'Laptop' %}selected{% endif %}>Laptop</option>
-                                    <option value="PC" {% if asset.asset_type == 'PC' %}selected{% endif %}>PC / Desktop</option>
-                                    <option value="Monitor" {% if asset.asset_type == 'Monitor' %}selected{% endif %}>Monitor</option>
-                                    <option value="Printer" {% if asset.asset_type == 'Printer' %}selected{% endif %}>Printer</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Tracking Number</label>
-                                <input type="text" name="tracking_number" value="{{ asset.tracking_number }}" class="form-control" required>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">Brand / Model</label>
-                                <input type="text" name="cpu_name" value="{{ asset.cpu_name }}" class="form-control" required>
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label">RAM</label>
-                                <input type="text" name="ram_size" value="{{ asset.ram_size or '' }}" class="form-control">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Storage</label>
-                                <input type="text" name="storage_type" value="{{ asset.storage_type or '' }}" class="form-control">
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label">Location</label>
-                                <input type="text" name="location" value="{{ asset.location or '' }}" class="form-control">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Status</label>
-                                <select name="status" class="form-select">
-                                    <option value="Working" {% if asset.status == 'Working' %}selected{% endif %}>Working</option>
-                                    <option value="Maintenance" {% if asset.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-                                    <option value="Faulty" {% if asset.status == 'Faulty' %}selected{% endif %}>Faulty</option>
-                                </select>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">Description</label>
-                                <textarea name="description" class="form-control" rows="3">{{ asset.description or '' }}</textarea>
-                            </div>
-
-                            <div class="col-12 mt-4">
-                                <div class="p-3 rounded-3" style="background-color: #f0f7ff; border: 1px dashed #0d6efd;">
-                                    <h6 class="fw-bold text-primary mb-3">Log maintenance / problem</h6>
-                                    <div class="row g-3">
-                                        <div class="col-md-5">
-                                            <label class="form-label">Action</label>
-                                            <select name="action_type" class="form-select border-primary">
-                                                <option value="General Service">General Service</option>
-                                                <option value="Hardware Upgrade">Hardware Upgrade</option>
-                                                <option value="Software Repair">Software Repair</option>
-                                                <option value="Faulty Report">Faulty Report</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-7">
-                                            <label class="form-label">Comments</label>
-                                            <textarea name="comment" class="form-control border-primary" rows="2" placeholder="Describe work done (saved to history if not empty)"></textarea>
-                                        </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages() %}
+                            {% if messages %}
+                                {% for message in messages %}
+                                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                                     </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <form method="POST" action="{{ url_for('edit_asset', id=asset.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="asset_type" class="form-label">Asset Type</label>
+                                    <select class="form-select" id="asset_type" name="asset_type" required>
+                                        <option value="Laptop" {% if asset.asset_type == 'Laptop' %}selected{% endif %}>Laptop</option>
+                                        <option value="Desktop" {% if asset.asset_type == 'Desktop' %}selected{% endif %}>Desktop</option>
+                                        <option value="Monitor" {% if asset.asset_type == 'Monitor' %}selected{% endif %}>Monitor</option>
+                                        <option value="Printer" {% if asset.asset_type == 'Printer' %}selected{% endif %}>Printer</option>
+                                        <option value="Server" {% if asset.asset_type == 'Server' %}selected{% endif %}>Server</option>
+                                        <option value="Network Equipment" {% if asset.asset_type == 'Network Equipment' %}selected{% endif %}>Network Equipment</option>
+                                        <option value="Other" {% if asset.asset_type == 'Other' %}selected{% endif %}>Other</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label for="tracking_number" class="form-label">Tracking Number</label>
+                                    <input type="text" class="form-control" id="tracking_number" name="tracking_number" value="{{ asset.tracking_number }}" required>
                                 </div>
                             </div>
-
-                            <div class="col-12 mt-4">
-                                <button type="submit" class="btn btn-update w-100 py-3 shadow-sm">Save changes</button>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="serial_number" class="form-label">Serial Number *</label>
+                                    <input type="text" class="form-control" id="serial_number" name="serial_number" value="{{ asset.serial_number }}" required>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label for="cpu_name" class="form-label">CPU Name</label>
+                                    <input type="text" class="form-control" id="cpu_name" name="cpu_name" value="{{ asset.cpu_name }}">
+                                </div>
                             </div>
-                        </div>
-                    </form>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="ram_size" class="form-label">RAM Size</label>
+                                    <input type="text" class="form-control" id="ram_size" name="ram_size" value="{{ asset.ram_size }}">
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label for="storage_type" class="form-label">Storage Type</label>
+                                    <input type="text" class="form-control" id="storage_type" name="storage_type" value="{{ asset.storage_type }}">
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="location" class="form-label">Location *</label>
+                                    <input type="text" class="form-control" id="location" name="location" value="{{ asset.location }}" required>
+                                </div>
+                                
+                                <div class="col-md-6 mb-3">
+                                    <label for="status" class="form-label">Status *</label>
+                                    <select class="form-select" id="status" name="status" required>
+                                        <option value="Working" {% if asset.status == 'Working' %}selected{% endif %}>Working</option>
+                                        <option value="Maintenance" {% if asset.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+                                        <option value="Faulty" {% if asset.status == 'Faulty' %}selected{% endif %}>Faulty</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="description" class="form-label">Description</label>
+                                <textarea class="form-control" id="description" name="description" rows="3">{{ asset.description or '' }}</textarea>
+                            </div>
+                            
+                            <hr>
+                            <h5>Maintenance Log</h5>
+                            <div class="row">
+                                <div class="col-md-4 mb-3">
+                                    <label for="action_type" class="form-label">Action Type</label>
+                                    <select class="form-select" id="action_type" name="action_type">
+                                        <option value="Repair">Repair</option>
+                                        <option value="Upgrade">Upgrade</option>
+                                        <option value="Inspection">Inspection</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-8 mb-3">
+                                    <label for="comment" class="form-label">Comment</label>
+                                    <input type="text" class="form-control" id="comment" name="comment" placeholder="Add a maintenance comment (optional)">
+                                </div>
+                            </div>
+                            
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                                    <i class="bi bi-x-circle"></i> Cancel
+                                </a>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-check-circle"></i> Save Changes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
