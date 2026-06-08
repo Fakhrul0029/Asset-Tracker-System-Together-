@@ -1057,7 +1057,14 @@ def admin_logs():
         return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/admin/backup', methods=['GET'])
+@app.route('/admin/backup')
+def backup_page():
+    if not is_admin():
+        return redirect(url_for('login'))
+    return render_template('backup.html')
+
+
+@app.route('/admin/backup/download')
 def backup_database():
     if not is_admin():
         return redirect(url_for('login'))
@@ -1065,14 +1072,14 @@ def backup_database():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        
+
         # Get all table names
         cur.execute("""
-            SELECT table_name FROM information_schema.tables 
+            SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
         """)
         tables = [row[0] for row in cur.fetchall()]
-        
+
         backup_data = {}
         for table in tables:
             cur.execute(f"SELECT * FROM {table}")
@@ -1082,17 +1089,17 @@ def backup_database():
                 'columns': columns,
                 'rows': rows
             }
-        
+
         cur.close()
         release_db_connection(conn)
-        
+
         import json
         backup_json = json.dumps(backup_data, default=str, indent=2)
-        
+
         output = io.BytesIO()
         output.write(backup_json.encode('utf-8'))
         output.seek(0)
-        
+
         app.logger.info("Database backup completed")
         return send_file(
             output,

@@ -1,29 +1,37 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asset View - JTDI Asset Tracker</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        .header-dark { background: #212529; color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }
+        :root { --navy: #1a2a6c; --gold: #ffc107; --light: #f8f9fa; }
+        body { background-color: var(--light); font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        .header-dark { background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%); color: white; padding: 15px; text-align: center; border-radius: 8px 8px 0 0; }
         .asset-card { max-width: 500px; margin: 50px auto; background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         .log-box { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; min-height: 100px; white-space: pre-line; border-radius: 5px; }
     </style>
 </head>
 <body class="bg-light">
     <div class="asset-card">
-        <div class="header-dark">🖥️ Hardware Specifications</div>
+        <div class="header-dark"><i class="bi bi-cpu-fill me-2"></i>Hardware Specifications</div>
         <div class="p-4">
             <h5>{{ data.cpu_name }}</h5>
             <p class="mb-1"><strong>S/N:</strong> {{ data.serial_number }}</p>
             <p class="mb-1"><strong>RAM:</strong> {{ data.ram_size }} | <strong>Storage:</strong> {{ data.storage_type }}</p>
             <p><strong>Location:</strong> {{ data.location }}</p>
             <hr>
-            <h6>📜 History Log</h6>
+            <h6><i class="bi bi-clock-history me-1"></i>History Log</h6>
             <div class="log-box">{{ data.maintenance_logs if data.maintenance_logs else 'No history recorded yet.' }}</div>
             <p class="text-muted text-center small mt-2">QR Scan Count: {{ data.scan_count }}</p>
             <div class="d-flex justify-content-between mt-3">
-                <a href="/" class="btn btn-secondary btn-sm">Home</a>
-                <a href="/edit/{{ data.id }}" class="btn btn-warning btn-sm">Edit Asset</a>
+                <a href="/" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>Home</a>
+                <a href="/edit/{{ data.id }}" class="btn btn-warning btn-sm"><i class="bi bi-pencil me-1"></i>Edit Asset</a>
             </div>
         </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
