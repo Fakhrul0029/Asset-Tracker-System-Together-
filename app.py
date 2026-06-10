@@ -9,8 +9,6 @@ import psycopg2.extras
 import psycopg2.pool
 import pandas as pd
 import logging
-import secrets
-import string
 from logging.handlers import RotatingFileHandler
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, Response
@@ -135,6 +133,7 @@ def ensure_bootstrap_admin():
     password = 'Admin123'  # Fixed password for system administrator
     username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
     full_name = os.environ.get('BOOTSTRAP_ADMIN_NAME', 'System Administrator')
+    # Store password in plain text for project convenience
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -151,8 +150,8 @@ def ensure_bootstrap_admin():
         """, (full_name, email, password, row['id']))
     else:
         cur.execute("""
-            INSERT INTO users (full_name, username, email, password, role, is_first_login)
-            VALUES (%s, %s, %s, %s, 'Admin', FALSE)
+            INSERT INTO users (full_name, username, email, password, role)
+            VALUES (%s, %s, %s, %s, 'Admin')
         """, (full_name, username, email, password))
     conn.commit()
     cur.close()
@@ -188,8 +187,8 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
 
+        # Add database indexes for performance
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);")
@@ -197,6 +196,8 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
             id SERIAL PRIMARY KEY,
@@ -213,11 +214,9 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'User',
-            is_first_login BOOLEAN DEFAULT TRUE
+            role TEXT NOT NULL DEFAULT 'User'
         );''')
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_first_login BOOLEAN DEFAULT TRUE;")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
             id SERIAL PRIMARY KEY,
@@ -240,9 +239,6 @@ def init_db():
             action TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
-
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
 
         conn.commit()
     except Exception as e:
@@ -279,49 +275,32 @@ def dashboard():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        # Access logic mapping rule optimization
-        if session.get('role') == 'Admin':
-            filter_sql = " WHERE is_deleted = FALSE"
-            activity_sql = "SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10"
-            params = ()
-        else:
-            filter_sql = " WHERE is_deleted = FALSE AND assigned_to = %s"
-            activity_sql = "SELECT * FROM activity_logs WHERE user_email = %s ORDER BY created_at DESC LIMIT 10"
-            params = (session.get('email'),)
-
-        # Get base overview stats contextually
-        cur.execute(f"SELECT COUNT(*) FROM assets{filter_sql}", params)
+        # Get statistics
+        cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
         total = cur.fetchone()['count']
         
-        cur.execute(f"SELECT COUNT(*) FROM assets{filter_sql} AND status = 'Working'", params)
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Working' AND is_deleted = FALSE")
         working = cur.fetchone()['count']
         
-        cur.execute(f"SELECT COUNT(*) FROM assets{filter_sql} AND status = 'Maintenance'", params)
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Maintenance' AND is_deleted = FALSE")
         maint = cur.fetchone()['count']
         
-        cur.execute(f"SELECT COUNT(*) FROM assets{filter_sql} AND status = 'Faulty'", params)
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Faulty' AND is_deleted = FALSE")
         faulty = cur.fetchone()['count']
         
-        cur.execute(f"SELECT COUNT(*) FROM assets{filter_sql} AND assigned_to IS NOT NULL", params)
+        cur.execute("SELECT COUNT(*) FROM assets WHERE assigned_to IS NOT NULL AND is_deleted = FALSE")
         checked_out = cur.fetchone()['count']
         
-        # Section 1: Assets distribution breakdown by type
-        cur.execute(f"SELECT asset_type, COUNT(*) as count FROM assets{filter_sql} GROUP BY asset_type", params)
+        # Assets by type
+        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY asset_type")
         by_type = cur.fetchall()
         
-        # Section 2: Assets distribution breakdown by location
-        cur.execute(f"SELECT location, COUNT(*) as count FROM assets{filter_sql} GROUP BY location", params)
+        # Assets by location
+        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY location")
         by_location = cur.fetchall()
         
-        # Section 3: Status distributions logic extracted straight from query mapping counts
-        asset_status_dict = {'Working': working, 'Maintenance': maint, 'Faulty': faulty}
-        
-        # Convert outputs into simple dictionaries matching existing layout architectures 
-        asset_type_data = {row['asset_type'] or 'Unknown': row['count'] for row in by_type}
-        asset_location_data = {row['location'] or 'Unknown': row['count'] for row in by_location}
-
-        # Activity logs binding
-        cur.execute(activity_sql, (session.get('email'),) if session.get('role') != 'Admin' else ())
+        # Recent activity
+        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
         recent_activity = cur.fetchall()
         
         cur.close()
@@ -330,11 +309,10 @@ def dashboard():
         return render_template('dashboard.html', 
                              total=total, working=working, maint=maint, faulty=faulty, 
                              checked_out=checked_out, by_type=by_type, by_location=by_location,
-                             recent_activity=recent_activity, asset_type_data=asset_type_data,
-                             asset_location_data=asset_location_data, asset_status_data=asset_status_dict)
+                             recent_activity=recent_activity)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
-        flash("An error occurred loading dashboard analytics.")
+        flash("An error occurred loading the dashboard.")
         return redirect(url_for('index'))
 
 
@@ -357,11 +335,9 @@ def index():
         query = "SELECT * FROM assets WHERE 1=1"
         count_query = "SELECT COUNT(*) FROM assets WHERE 1=1"
         params = []
-        
         if session.get('role') != 'Admin':
             query += " AND is_deleted = FALSE"
             count_query += " AND is_deleted = FALSE"
-            
         if s:
             query += (
                 " AND (serial_number ILIKE %s OR tracking_number ILIKE %s "
@@ -378,15 +354,18 @@ def index():
             count_query += " AND asset_type = %s"
             params.append(c)
 
+        # Get total count for pagination
         cur.execute(count_query, tuple(params))
         total = cur.fetchone()['count']
         
+        # Add sorting
         valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type']
         if sort not in valid_sorts:
             sort = 'id'
         order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
         query += f" ORDER BY {sort} {order_dir}"
         
+        # Add pagination
         offset = (page - 1) * per_page
         query += f" LIMIT {per_page} OFFSET {offset}"
         
@@ -400,17 +379,12 @@ def index():
             'faulty': len([r for r in data if r['status'] == 'Faulty'])
         }
         
-        # Extract pre-requisite list elements mapping dropdown lists seamlessly to frontend modals
-        cur.execute("SELECT username, email FROM users ORDER BY username ASC")
-        existing_system_users = cur.fetchall()
-        
         total_pages = (total + per_page - 1) // per_page
         cur.close()
         release_db_connection(conn)
 
         return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
-                             sort=sort, order=order, page=page, total_pages=total_pages, 
-                             per_page=per_page, user_dropdown_list=existing_system_users)
+                             sort=sort, order=order, page=page, total_pages=total_pages, per_page=per_page)
     except Exception as e:
         app.logger.error(f"Index error: {e}")
         flash("An error occurred loading assets.")
@@ -638,69 +612,6 @@ def checkin_asset(id):
         return redirect(url_for('index'))
 
 
-@app.route('/admin/assign_asset/<int:id>', methods=['POST'])
-def assign_asset_lifecycle(id):
-    if not is_admin():
-        return redirect(url_for('login'))
-    try:
-        user_select_value = request.form.get('user_identity_string', '').strip()
-        if not user_select_value:
-            flash("Please choose a valid destination target.")
-            return redirect(url_for('index'))
-
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
-        row = cur.fetchone()
-        
-        if row:
-            cur.execute("""
-                UPDATE assets SET 
-                    assigned_to = %s,
-                    checkout_date = %s,
-                    checkout_by = %s,
-                    status = 'Assigned'
-                WHERE id = %s
-            """, (user_select_value, datetime.now(), session.get('full_name') or session.get('user'), id))
-            conn.commit()
-            log_activity(session.get('email'), f"LIFECYCLE ASSIGNED TO {user_select_value}", row['serial_number'])
-        cur.close()
-        release_db_connection(conn)
-        flash("Asset assigned lifecycle flow complete.")
-        return redirect(url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Lifecycle update failure: {e}")
-        flash("Lifecycle error encountered.")
-        return redirect(url_for('index'))
-
-
-@app.route('/user/return_asset/<int:id>', methods=['POST'])
-def user_return_asset(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
-        row = cur.fetchone()
-        if row:
-            cur.execute("UPDATE assets SET status = 'Returned' WHERE id = %s", (id,))
-            cur.execute("""
-                INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by)
-                VALUES (%s, 'LIFECYCLE_RETURN', 'Asset use completed. Checked out and returned.', %s)
-            """, (id, session.get('full_name') or session.get('user')))
-            conn.commit()
-            log_activity(session.get('email'), "LIFECYCLE RETURN COMPLETED", row['serial_number'])
-        cur.close()
-        release_db_connection(conn)
-        flash("Asset successfully returned.")
-        return redirect(url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Return submission error: {e}")
-        flash("Could not submit asset lifecycle status transformation.")
-        return redirect(url_for('index'))
-
-
 @app.route('/delete/<int:id>', methods=['POST'])
 def delete_asset(id):
     if 'user' not in session:
@@ -711,7 +622,6 @@ def delete_asset(id):
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
-        
         cur.execute("UPDATE assets SET is_deleted = TRUE WHERE id = %s", (id,))
         conn.commit()
         cur.close()
@@ -748,8 +658,8 @@ def add_asset():
             cur.execute("""
                 INSERT INTO assets (
                     asset_type, tracking_number, cpu_name, serial_number,
-                    ram_size, storage_type, status, location, description, owner_name, is_deleted
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, FALSE)
+                    ram_size, storage_type, status, location, description, is_deleted
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, FALSE)
             """, (
                 request.form.get('asset_type'),
                 tn,
@@ -759,8 +669,7 @@ def add_asset():
                 request.form.get('storage_type'),
                 request.form.get('status'),
                 request.form.get('location'),
-                request.form.get('description'),
-                request.form.get('owner_name')
+                request.form.get('description')
             ))
             conn.commit()
             cur.close()
@@ -780,37 +689,6 @@ def add_asset():
     return render_template('add.html')
 
 
-@app.route('/force_password_reset', methods=['GET', 'POST'])
-def force_password_reset():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        new_pass = request.form.get('new_password', '')
-        is_valid, msg = validate_password_complexity(new_pass)
-        if not is_valid:
-            flash(msg)
-            return render_template('login.html')
-            
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                UPDATE users SET password = %s, is_first_login = FALSE WHERE email = %s
-            """, (new_pass, session.get('email')))
-            conn.commit()
-            cur.close()
-            release_db_connection(conn)
-            flash("Temporary password updated successfully! Dashboard unlocked.")
-            return redirect(url_for('dashboard'))
-        except Exception as e:
-            app.logger.error(f"Force reset action layer failure: {e}")
-            flash("Database verification connection failed processing values.")
-            
-    # Direct access placeholder view injection inside login window space if template misses matching dependencies
-    return render_template('login.html', force_reset_mode=True)
-
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -818,6 +696,7 @@ def login():
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
+        # Rate limiting check
         allowed, error_msg = check_rate_limit(email)
         if not allowed:
             flash(error_msg)
@@ -829,7 +708,9 @@ def login():
             cur.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = cur.fetchone()
 
+            # Check plain text password for project convenience
             if user and user['password'] == password:
+                # Clear login attempts on successful login
                 if email in login_attempts:
                     del login_attempts[email]
 
@@ -846,19 +727,13 @@ def login():
                     (user['full_name'] or user['username'], user['email'])
                 )
                 conn.commit()
-                
-                # Dynamic Interceptor Logic evaluating password initialization state triggers
-                if user.get('is_first_login') == True:
-                    cur.close()
-                    conn.close()
-                    return redirect(url_for('force_password_reset'))
-                    
                 cur.close()
                 conn.close()
                 log_access(user['email'], "LOGIN")
                 app.logger.info(f"User logged in: {email}")
                 return redirect(url_for('dashboard'))
             else:
+                # Record failed login attempt
                 if email not in login_attempts:
                     login_attempts[email] = []
                 login_attempts[email].append(datetime.now())
@@ -958,6 +833,7 @@ def export_excel():
         cur.close()
         release_db_connection(conn)
 
+        # Convert rows to list of dicts for better handling
         data = []
         for row in rows:
             data.append(dict(zip(column_names, row)))
@@ -997,6 +873,7 @@ def admin_dashboard():
         cur.execute("SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 100")
         login_logs = cur.fetchall()
 
+        # Asset analytics data
         cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY asset_type")
         asset_type_data = {row['asset_type'] or 'Unknown': row['count'] for row in cur.fetchall()}
         
@@ -1032,27 +909,23 @@ def manage_users():
             if role not in ('User', 'Admin'):
                 role = 'User'
             
-            email_input = request.form.get('email', '').strip().lower()
-            username_prefix = email_input.split('@')[0] if '@' in email_input else email_input
-            
-            # Alphanumeric secure temporary password token parsing sequence mapping
-            alphabet_source = string.ascii_letters + string.digits
-            autogenerated_password = ''.join(secrets.choice(alphabet_source) for _ in range(12))
+            password = request.form.get('password', '')
+            # Store password in plain text for project convenience
             
             try:
                 cur.execute("""
-                    INSERT INTO users (full_name, username, email, password, role, is_first_login)
-                    VALUES (%s, %s, %s, %s, %s, TRUE)
+                    INSERT INTO users (full_name, username, email, password, role)
+                    VALUES (%s, %s, %s, %s, %s)
                 """, (
-                    username_prefix,
-                    username_prefix,
-                    email_input,
-                    autogenerated_password,
+                    request.form.get('full_name') or request.form.get('username'),
+                    request.form.get('username'),
+                    request.form.get('email', '').strip().lower(),
+                    password,  # Plain text for project
                     role
                 ))
                 conn.commit()
-                app.logger.info(f"User created via automated sequence parsing: {email_input}")
-                flash(f"User created successfully! Temporary Login Password: {autogenerated_password}")
+                app.logger.info(f"User created: {request.form.get('email')}")
+                flash("User created successfully.")
             except Exception as e:
                 conn.rollback()
                 app.logger.error(f"User creation error: {e}")
@@ -1086,6 +959,7 @@ def edit_user(id):
             new_password = request.form.get('password', '').strip()
 
             if new_password:
+                # Store password in plain text for project convenience
                 cur.execute("""
                     UPDATE users SET full_name=%s, email=%s, role=%s, password=%s
                     WHERE id=%s
@@ -1093,7 +967,7 @@ def edit_user(id):
                     request.form.get('full_name'),
                     request.form.get('email', '').strip().lower(),
                     role,
-                    new_password,
+                    new_password,  # Plain text for project
                     id
                 ))
             else:
@@ -1145,6 +1019,7 @@ def delete_user(id):
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT username FROM users WHERE id = %s", (id,))
         user = cur.fetchone()
+
         if user and user['username'] == 'admin':
             flash("Cannot delete the main administrator account.")
         else:
@@ -1152,6 +1027,7 @@ def delete_user(id):
             conn.commit()
             app.logger.info(f"User deleted: {id}")
             flash("User deleted.")
+
         cur.close()
         release_db_connection(conn)
         return redirect(url_for('manage_users'))
@@ -1173,6 +1049,7 @@ def admin_logs():
         logs = cur.fetchall()
         cur.close()
         release_db_connection(conn)
+
         return render_template('login_logs.html', logs=logs)
     except Exception as e:
         app.logger.error(f"Admin logs error: {e}")
@@ -1191,14 +1068,18 @@ def backup_page():
 def backup_database():
     if not is_admin():
         return redirect(url_for('login'))
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+
+        # Get all table names
         cur.execute("""
-            SELECT table_name FROM information_schema.tables 
+            SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
         """)
         tables = [row[0] for row in cur.fetchall()]
+
         backup_data = {}
         for table in tables:
             cur.execute(f"SELECT * FROM {table}")
@@ -1208,13 +1089,17 @@ def backup_database():
                 'columns': columns,
                 'rows': rows
             }
+
         cur.close()
         release_db_connection(conn)
+
         import json
         backup_json = json.dumps(backup_data, default=str, indent=2)
+
         output = io.BytesIO()
         output.write(backup_json.encode('utf-8'))
         output.seek(0)
+
         app.logger.info("Database backup completed")
         return send_file(
             output,
