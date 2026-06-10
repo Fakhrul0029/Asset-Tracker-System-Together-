@@ -3,135 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - JTDI Asset Tracker</title>
+    <title>Access Authentication Checkpoint - JTDI Asset Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        :root { --navy: #1a2a6c; --gold: #ffc107; --light: #f8f9fa; }
-        body {
-            background: linear-gradient(135deg, #1a2a6c 0%, #203a43 50%, #2c5364 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        }
-        .login-card {
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 40px;
-            width: 100%;
-            max-width: 420px;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .login-header h2 {
-            color: var(--navy);
-            font-weight: 700;
-        }
-        .login-header p {
-            color: #666;
-            font-size: 14px;
-        }
-        .login-logo {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%);
-            border-radius: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            color: var(--gold);
-            font-size: 1.5rem;
-        }
-        .form-control {
-            border-radius: 8px;
-            padding: 12px;
-            border: 1px solid #ddd;
-        }
-        .form-control:focus {
-            border-color: var(--navy);
-            box-shadow: 0 0 0 0.2rem rgba(26, 42, 108, 0.25);
-        }
-        .btn-login {
-            background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%);
-            border: none;
-            border-radius: 8px;
-            padding: 12px;
-            font-weight: 600;
-            transition: transform 0.2s;
-        }
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(26, 42, 108, 0.4);
-        }
-        .alert {
-            border-radius: 8px;
-        }
-        .input-group-text {
-            background: #f8f9fa;
-            border: 1px solid #ddd;
-            border-right: none;
-        }
-        .form-control { border-left: none; }
+        :root { --navy: #1a2a6c; --gold: #ffc107; }
+        body { background: linear-gradient(135deg, var(--navy) 0%, #203a43 100%); height: 100vh; font-family: 'Inter', system-ui, sans-serif; }
+        .login-card { border: none; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); background: #ffffff; }
+        .btn-auth { background-color: var(--navy); color: white; border: none; font-weight: 500; }
+        .btn-auth:hover { background-color: #111d4a; color: white; }
     </style>
 </head>
-<body>
-    <div class="login-card">
-        <div class="login-header">
-            <div class="login-logo">
-                <i class="bi bi-cpu-fill"></i>
-            </div>
-            <h2>JTDI Asset Tracker</h2>
-            <p>Please sign in to continue</p>
-        </div>
-
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+<body class="d-flex align-items-center justify-content-center">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-12 col-sm-8 col-md-6 col-lg-4">
+                <div class="card login-card p-4">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-cpu-fill fs-1 text-warning"></i>
+                        <h5 class="fw-bold mt-2 text-dark">JTDI INVENTORY INFRASTRUCTURE</h5>
                     </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
 
-        <form method="POST" action="{{ url_for('login') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-danger small alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-close="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
-            <div class="mb-3">
-                <label for="email" class="form-label">Email Address</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                    <input type="email" class="form-control" id="email" name="email" required placeholder="Enter your email">
+                    {% if force_reset_mode %}
+                    <form method="POST" action="/force_password_reset">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <p class="small text-danger mb-3 fw-bold"><i class="bi bi-shield-exclamation me-1"></i> Security Update Required: Temporary password authentication token detected. Please set up strong alphanumeric password criteria to continue.</p>
+                        
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Specify New Password Choice</label>
+                            <input type="password" class="form-control" name="new_password" placeholder="Min 8 chars, 1 Upper, 1 Lower, 1 Num" required>
+                        </div>
+                        <button type="submit" class="btn btn-warning btn-sm w-100 fw-bold">Update Account Security & Unlock Dashboard</button>
+                    </form>
+                    {% else %}
+                    <form method="POST" action="/login">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">System Email Address</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light text-muted"><i class="bi bi-envelope"></i></span>
+                                <input type="email" class="form-control" name="email" placeholder="name@jtdi.gov.my" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold">Authentication Access Password</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light text-muted"><i class="bi bi-lock"></i></span>
+                                <input type="password" class="form-control" name="password" placeholder="••••••••" required>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-auth w-100 py-2 rounded-3">Verify Credentials</button>
+                    </form>
+                    {% endif %}
                 </div>
             </div>
-
-            <div class="mb-3">
-                <label for="password" class="form-label">Password</label>
-                <div class="input-group">
-                    <span class="input-group-text"><i class="bi bi-key"></i></span>
-                    <input type="password" class="form-control" id="password" name="password" required placeholder="Enter your password">
-                </div>
-            </div>
-
-            <div class="d-grid gap-2">
-                <button type="submit" class="btn btn-primary btn-login">
-                    <i class="bi bi-box-arrow-in-right me-1"></i>Sign In
-                </button>
-            </div>
-        </form>
-
-        <div class="text-center mt-4">
-            <small class="text-muted">&copy; 2026 JTDI Asset Tracker System</small>
         </div>
     </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
