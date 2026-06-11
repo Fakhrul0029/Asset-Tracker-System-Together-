@@ -176,6 +176,11 @@
                                 <textarea class="form-control" id="description" name="description" rows="3">{{ asset.description or '' }}</textarea>
                             </div>
 
+                            <div class="mb-3">
+                                <label for="owner_name" class="form-label">Owner Name *</label>
+                                <input type="text" class="form-control" id="owner_name" name="owner_name" value="{{ asset.owner_name or '' }}" required>
+                            </div>
+
                             <hr>
                             <h5>Maintenance Log</h5>
                             <div class="row">
