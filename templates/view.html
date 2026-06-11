@@ -151,6 +151,12 @@
                                 </p>
                             </div>
                             <div class="col-md-6 mb-3">
+                                <span class="info-label">Owner Name:</span>
+                                <p>{{ asset.owner_name or '-' }}</p>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
                                 <span class="info-label">Scan Count:</span>
                                 <p>{{ asset.scan_count or 0 }}</p>
                             </div>
