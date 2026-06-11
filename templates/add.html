@@ -176,6 +176,11 @@
                                 <textarea class="form-control" id="description" name="description" rows="3" placeholder="Additional details about the asset"></textarea>
                             </div>
 
+                            <div class="mb-3">
+                                <label for="owner_name" class="form-label">Owner Name *</label>
+                                <input type="text" class="form-control" id="owner_name" name="owner_name" required placeholder="Full name of asset owner">
+                            </div>
+
                             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                                 <a href="{{ url_for('index') }}" class="btn btn-secondary">
                                     <i class="bi bi-x-circle me-1"></i>Cancel
