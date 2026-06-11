@@ -27,13 +27,20 @@
         .navbar .dropdown-menu { border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); border: none; }
         .navbar .dropdown-item { padding: 0.5rem 1rem; font-size: 0.9rem; }
         .navbar .dropdown-item:hover { background: #f0f4ff; }
-        .stat-card { border: none; border-radius: 12px; color: white; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+        .stat-card { border: none; border-radius: 12px; color: white; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.08); cursor: pointer; }
         .stat-card:hover { transform: translateY(-5px); }
         .chart-card { border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
         .activity-item { border-left: 3px solid var(--navy); background: #fff; padding: 12px; margin-bottom: 8px; border-radius: 6px; }
         .user-badge { background: rgba(255,193,7,0.15); color: var(--gold); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
-        .chart-container { position: relative; height: 250px; width: 100%; }
-        canvas { max-height: 250px; }
+        .chart-container { position: relative; height: 220px; width: 100%; margin-bottom: 10px; }
+        canvas { max-height: 220px; }
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--navy), #203a43);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+        }
     </style>
 </head>
 <body>
@@ -82,10 +89,29 @@
     </nav>
 
     <div class="container py-4">
+        <!-- Welcome Header -->
+        <div class="dashboard-header">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h4 class="mb-1"><i class="bi bi-graph-up me-2"></i>Welcome, {{ session.full_name }}!</h4>
+                    <p class="mb-0 opacity-75">
+                        {% if session.role == 'Admin' %}
+                            Here's your complete asset management overview
+                        {% else %}
+                            Here's your personal asset overview
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-warning text-dark">{{ session.role }}</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Statistics Cards -->
         <div class="row g-4 mb-4">
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-primary">
+                <div class="card stat-card p-3 bg-primary" onclick="window.location.href='/'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
@@ -96,7 +122,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-success">
+                <div class="card stat-card p-3 bg-success" onclick="window.location.href='/?status=Working'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Working</h6>
@@ -107,7 +133,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-warning text-dark">
+                <div class="card stat-card p-3 bg-warning text-dark" onclick="window.location.href='/?status=Maintenance'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Maintenance</h6>
@@ -118,7 +144,7 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-danger">
+                <div class="card stat-card p-3 bg-danger" onclick="window.location.href='/?status=Faulty'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Faulty</h6>
@@ -133,22 +159,22 @@
         <!-- Assignment Status -->
         <div class="row g-4 mb-4">
             <div class="col-md-6">
-                <div class="card stat-card p-4 bg-info">
+                <div class="card stat-card p-3 bg-info" onclick="window.location.href='/?assigned=yes'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Assigned Assets</h6>
-                            <h2 class="mb-0">{{ checked_out }}</h2>
+                            <h2 class="mb-0">{{ assigned }}</h2>
                         </div>
                         <i class="bi bi-person-check fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
             <div class="col-md-6">
-                <div class="card stat-card p-4 bg-secondary">
+                <div class="card stat-card p-3 bg-secondary" onclick="window.location.href='/?assigned=no'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Available Assets</h6>
-                            <h2 class="mb-0">{{ total - checked_out }}</h2>
+                            <h2 class="mb-0">{{ total - assigned }}</h2>
                         </div>
                         <i class="bi bi-inbox fs-1 opacity-50"></i>
                     </div>
@@ -156,48 +182,43 @@
             </div>
         </div>
 
-        <!-- Analytics Charts Section - 4 Charts -->
+        <!-- Analytics Charts Section - 3 Charts -->
         <div class="row g-4 mb-4">
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-4">
                 <div class="card chart-card p-3">
-                    <h6 class="fw-bold mb-2 text-center">Assets by Type</h6>
+                    <h6 class="fw-bold mb-2 text-center">
+                        <i class="bi bi-tags me-1 text-primary"></i>Assets by Type
+                    </h6>
                     <div class="chart-container">
-                        <canvas id="analyticsTypeChart"></canvas>
+                        <canvas id="typeChart"></canvas>
                     </div>
-                    {% if not analytics_type %}
+                    {% if type_labels|length == 0 %}
                     <p class="text-center text-muted mt-2 small">No data available</p>
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-4">
                 <div class="card chart-card p-3">
-                    <h6 class="fw-bold mb-2 text-center">Assets by Location</h6>
+                    <h6 class="fw-bold mb-2 text-center">
+                        <i class="bi bi-geo-alt me-1 text-success"></i>Assets by Location
+                    </h6>
                     <div class="chart-container">
-                        <canvas id="analyticsLocationChart"></canvas>
+                        <canvas id="locationChart"></canvas>
                     </div>
-                    {% if not analytics_location %}
+                    {% if location_labels|length == 0 %}
                     <p class="text-center text-muted mt-2 small">No data available</p>
                     {% endif %}
                 </div>
             </div>
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-4">
                 <div class="card chart-card p-3">
-                    <h6 class="fw-bold mb-2 text-center">Assets by Status</h6>
+                    <h6 class="fw-bold mb-2 text-center">
+                        <i class="bi bi-pie-chart me-1 text-warning"></i>Assets by Status
+                    </h6>
                     <div class="chart-container">
-                        <canvas id="analyticsStatusChart"></canvas>
+                        <canvas id="statusChart"></canvas>
                     </div>
-                    {% if not analytics_status %}
-                    <p class="text-center text-muted mt-2 small">No data available</p>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="col-md-6 col-lg-3">
-                <div class="card chart-card p-3">
-                    <h6 class="fw-bold mb-2 text-center">Asset Age</h6>
-                    <div class="chart-container">
-                        <canvas id="analyticsAgeChart"></canvas>
-                    </div>
-                    {% if not analytics_age %}
+                    {% if status_labels|length == 0 %}
                     <p class="text-center text-muted mt-2 small">No data available</p>
                     {% endif %}
                 </div>
@@ -208,18 +229,26 @@
         <div class="row g-4">
             <div class="col-12">
                 <div class="card chart-card p-4">
-                    <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2"></i>Recent Activity</h5>
+                    <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-info"></i>Recent Activity</h5>
                     <div style="max-height: 300px; overflow-y: auto;">
                         {% for log in recent_activity %}
                         <div class="activity-item">
-                            <div class="d-flex justify-content-between">
-                                <strong>{{ log.user_email }}</strong>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ log.user_email }}</strong>
+                                    <span class="badge bg-secondary ms-2">{{ log.action }}</span>
+                                </div>
                                 <small class="text-muted">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '' }}</small>
                             </div>
-                            <div class="text-muted small">{{ log.action }} {% if log.asset_serial %}- {{ log.asset_serial }}{% endif %}</div>
+                            {% if log.asset_serial %}
+                            <div class="text-muted small mt-1">Asset: {{ log.asset_serial }}</div>
+                            {% endif %}
                         </div>
                         {% else %}
-                        <p class="text-center text-muted py-4">No recent activity.</p>
+                        <p class="text-center text-muted py-4">
+                            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                            No recent activity.
+                        </p>
                         {% endfor %}
                     </div>
                 </div>
@@ -238,71 +267,105 @@
         const warningTime = 5 * 60 * 1000;
         let warningShown = false;
         setTimeout(() => {
-            if (!warningShown) { warningShown = true; if (confirm('Your session will expire in 5 minutes. Extend?')) window.location.reload(); }
+            if (!warningShown) { 
+                warningShown = true; 
+                if (confirm('Your session will expire in 5 minutes. Click OK to stay logged in.')) {
+                    window.location.reload();
+                }
+            }
         }, sessionTimeout - warningTime);
 
         // Chart 1: Assets by Type (Doughnut)
-        if (document.getElementById('analyticsTypeChart')) {
-            const typeLabels = [{% for item in analytics_type %}'{{ item.asset_type }}',{% endfor %}];
-            const typeData = [{% for item in analytics_type %}{{ item.count }},{% endfor %}];
-            if (typeLabels.length > 0) {
-                new Chart(document.getElementById('analyticsTypeChart').getContext('2d'), {
-                    type: 'doughnut',
-                    data: {
-                        labels: typeLabels,
-                        datasets: [{ data: typeData, backgroundColor: ['#1a2a6c','#ffc107','#28a745','#dc3545','#17a2b8','#6610f2','#fd7e14','#6f42c1'] }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } } } }
-                });
-            }
+        const typeLabels = {{ type_labels|tojson }};
+        const typeData = {{ type_data|tojson }};
+        
+        if (document.getElementById('typeChart') && typeLabels.length > 0) {
+            new Chart(document.getElementById('typeChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: typeLabels,
+                    datasets: [{ 
+                        data: typeData, 
+                        backgroundColor: ['#1a2a6c', '#ffc107', '#28a745', '#dc3545', '#17a2b8', '#6610f2', '#fd7e14', '#6f42c1', '#20c997', '#e83e8c'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { boxWidth: 10, font: { size: 10 } },
+                            onClick: null
+                        },
+                        tooltip: { callbacks: { label: function(context) { return `${context.label}: ${context.raw} assets`; } } }
+                    }
+                }
+            });
         }
 
         // Chart 2: Assets by Location (Bar)
-        if (document.getElementById('analyticsLocationChart')) {
-            const locationLabels = [{% for item in analytics_location %}'{{ item.location }}',{% endfor %}];
-            const locationData = [{% for item in analytics_location %}{{ item.count }},{% endfor %}];
-            if (locationLabels.length > 0) {
-                new Chart(document.getElementById('analyticsLocationChart').getContext('2d'), {
-                    type: 'bar',
-                    data: {
-                        labels: locationLabels,
-                        datasets: [{ label: 'Assets', data: locationData, backgroundColor: '#1a2a6c', borderRadius: 5 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-                });
-            }
+        const locationLabels = {{ location_labels|tojson }};
+        const locationData = {{ location_data|tojson }};
+        
+        if (document.getElementById('locationChart') && locationLabels.length > 0) {
+            new Chart(document.getElementById('locationChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: locationLabels,
+                    datasets: [{ 
+                        label: 'Number of Assets', 
+                        data: locationData, 
+                        backgroundColor: '#1a2a6c',
+                        borderRadius: 8,
+                        barPercentage: 0.7
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: function(context) { return `${context.raw} assets`; } } }
+                    }, 
+                    scales: { 
+                        y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, title: { display: true, text: 'Count' } },
+                        x: { ticks: { font: { size: 9 } } }
+                    } 
+                }
+            });
         }
 
         // Chart 3: Assets by Status (Pie)
-        if (document.getElementById('analyticsStatusChart')) {
-            const statusLabels = [{% for item in analytics_status %}'{{ item.status }}',{% endfor %}];
-            const statusData = [{% for item in analytics_status %}{{ item.count }},{% endfor %}];
-            if (statusLabels.length > 0) {
-                new Chart(document.getElementById('analyticsStatusChart').getContext('2d'), {
-                    type: 'pie',
-                    data: {
-                        labels: statusLabels,
-                        datasets: [{ data: statusData, backgroundColor: ['#28a745','#ffc107','#dc3545','#17a2b8'] }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } } } }
-                });
-            }
-        }
-
-        // Chart 4: Asset Age (Doughnut)
-        if (document.getElementById('analyticsAgeChart')) {
-            const ageLabels = [{% for item in analytics_age %}'{{ item.age_group }}',{% endfor %}];
-            const ageData = [{% for item in analytics_age %}{{ item.count }},{% endfor %}];
-            if (ageLabels.length > 0) {
-                new Chart(document.getElementById('analyticsAgeChart').getContext('2d'), {
-                    type: 'doughnut',
-                    data: {
-                        labels: ageLabels,
-                        datasets: [{ data: ageData, backgroundColor: ['#17a2b8', '#6c757d'] }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 9 } } } } }
-                });
-            }
+        const statusLabels = {{ status_labels|tojson }};
+        const statusData = {{ status_data|tojson }};
+        
+        if (document.getElementById('statusChart') && statusLabels.length > 0) {
+            new Chart(document.getElementById('statusChart').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{ 
+                        data: statusData, 
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: true,
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { boxWidth: 10, font: { size: 10 } }
+                        },
+                        tooltip: { callbacks: { label: function(context) { return `${context.label}: ${context.raw} assets`; } } }
+                    }
+                }
+            });
         }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
