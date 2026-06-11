@@ -165,27 +165,42 @@
             </div>
         </div>
 
-        <!-- Charts -->
+        <!-- Analytics Charts Section - Extended for both Admin and User -->
         <div class="row g-4 mb-4">
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="card chart-card p-4">
                     <h5 class="fw-bold mb-3">Assets by Type</h5>
-                    <canvas id="typeChart"></canvas>
+                    <canvas id="analyticsTypeChart"></canvas>
+                    {% if not analytics_type %}
+                    <p class="text-center text-muted mt-3 small">No assets assigned</p>
+                    {% endif %}
                 </div>
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
                 <div class="card chart-card p-4">
                     <h5 class="fw-bold mb-3">Assets by Location</h5>
-                    <canvas id="locationChart"></canvas>
+                    <canvas id="analyticsLocationChart"></canvas>
+                    {% if not analytics_location %}
+                    <p class="text-center text-muted mt-3 small">No assets assigned</p>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card chart-card p-4">
+                    <h5 class="fw-bold mb-3">Asset Status Distribution</h5>
+                    <canvas id="analyticsStatusChart"></canvas>
+                    {% if not analytics_status %}
+                    <p class="text-center text-muted mt-3 small">No assets assigned</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- Status Chart -->
+        <!-- Status Chart (existing) -->
         <div class="row g-4 mb-4">
             <div class="col-md-6">
                 <div class="card chart-card p-4">
-                    <h5 class="fw-bold mb-3">Asset Status Distribution</h5>
+                    <h5 class="fw-bold mb-3">Asset Status Distribution (All)</h5>
                     <canvas id="statusChart"></canvas>
                 </div>
             </div>
@@ -224,23 +239,39 @@
             if (!warningShown) { warningShown = true; if (confirm('Your session will expire in 5 minutes. Extend?')) window.location.reload(); }
         }, sessionTimeout - warningTime);
 
-        new Chart(document.getElementById('typeChart').getContext('2d'), {
-            type: 'doughnut',
-            data: {
-                labels: [{% for item in by_type %}'{{ item.asset_type }}',{% endfor %}],
-                datasets: [{ data: [{% for item in by_type %}{{ item.count }},{% endfor %}], backgroundColor: ['#1a2a6c','#ffc107','#28a745','#dc3545','#17a2b8','#6610f2'] }]
-            },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-        });
+        // Analytics Charts - Extended
+        if (document.getElementById('analyticsTypeChart')) {
+            new Chart(document.getElementById('analyticsTypeChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: [{% for item in analytics_type %}'{{ item.asset_type }}',{% endfor %}],
+                    datasets: [{ data: [{% for item in analytics_type %}{{ item.count }},{% endfor %}], backgroundColor: ['#1a2a6c','#ffc107','#28a745','#dc3545','#17a2b8','#6610f2','#fd7e14','#6f42c1'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } } }
+            });
+        }
 
-        new Chart(document.getElementById('locationChart').getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: [{% for item in by_location %}'{{ item.location }}',{% endfor %}],
-                datasets: [{ label: 'Assets', data: [{% for item in by_location %}{{ item.count }},{% endfor %}], backgroundColor: '#1a2a6c' }]
-            },
-            options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-        });
+        if (document.getElementById('analyticsLocationChart')) {
+            new Chart(document.getElementById('analyticsLocationChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: [{% for item in analytics_location %}'{{ item.location }}',{% endfor %}],
+                    datasets: [{ label: 'Assets', data: [{% for item in analytics_location %}{{ item.count }},{% endfor %}], backgroundColor: '#1a2a6c' }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        if (document.getElementById('analyticsStatusChart')) {
+            new Chart(document.getElementById('analyticsStatusChart').getContext('2d'), {
+                type: 'pie',
+                data: {
+                    labels: [{% for item in analytics_status %}'{{ item.status }}',{% endfor %}],
+                    datasets: [{ data: [{% for item in analytics_status %}{{ item.count }},{% endfor %}], backgroundColor: ['#28a745','#ffc107','#dc3545','#17a2b8'] }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom' } } }
+            });
+        }
 
         new Chart(document.getElementById('statusChart').getContext('2d'), {
             type: 'pie',
