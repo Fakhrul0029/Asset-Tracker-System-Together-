@@ -3,6 +3,8 @@ import io
 import csv
 import base64
 import traceback
+import secrets
+import string
 import qrcode
 import psycopg2
 import psycopg2.extras
@@ -35,7 +37,7 @@ connection_pool = psycopg2.pool.SimpleConnectionPool(
 # Configure logging
 if not os.path.exists('logs'):
     os.makedirs('logs')
-file_handler = RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
+file_handler = logging.handlers.RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
 file_handler.setFormatter(logging.Formatter(
     '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
 ))
@@ -83,6 +85,12 @@ def validate_password_complexity(password):
     return True, "Password is valid"
 
 
+def generate_temp_password():
+    """Generate a secure temporary password"""
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(10))
+
+
 def check_rate_limit(email):
     """Check if login attempts exceed rate limit (5 attempts per 15 minutes)"""
     now = datetime.now()
@@ -128,6 +136,44 @@ def log_access(email, action):
         app.logger.error(f"ACCESS LOG ERROR: {e}")
 
 
+def get_analytics_data(user_role, user_email=None):
+    """Get analytics data based on user role (Admin gets all, User gets assigned assets only)"""
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    if user_role == 'Admin':
+        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
+        by_type = cur.fetchall()
+        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
+        by_location = cur.fetchall()
+        cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+        by_status = cur.fetchall()
+    else:
+        # User sees only assets assigned to them
+        cur.execute("""
+            SELECT asset_type, COUNT(*) as count FROM assets 
+            WHERE is_deleted = FALSE AND assigned_to = %s AND asset_type IS NOT NULL 
+            GROUP BY asset_type
+        """, (user_email,))
+        by_type = cur.fetchall()
+        cur.execute("""
+            SELECT location, COUNT(*) as count FROM assets 
+            WHERE is_deleted = FALSE AND assigned_to = %s AND location IS NOT NULL 
+            GROUP BY location
+        """, (user_email,))
+        by_location = cur.fetchall()
+        cur.execute("""
+            SELECT status, COUNT(*) as count FROM assets 
+            WHERE is_deleted = FALSE AND assigned_to = %s 
+            GROUP BY status
+        """, (user_email,))
+        by_status = cur.fetchall()
+    
+    cur.close()
+    release_db_connection(conn)
+    return by_type, by_location, by_status
+
+
 def ensure_bootstrap_admin():
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
     password = 'Admin123'  # Fixed password for system administrator
@@ -145,13 +191,13 @@ def ensure_bootstrap_admin():
     if row:
         cur.execute("""
             UPDATE users
-            SET full_name = %s, email = %s, password = %s, role = 'Admin'
+            SET full_name = %s, email = %s, password = %s, role = 'Admin', first_login = FALSE
             WHERE id = %s
         """, (full_name, email, password, row['id']))
     else:
         cur.execute("""
-            INSERT INTO users (full_name, username, email, password, role)
-            VALUES (%s, %s, %s, %s, 'Admin')
+            INSERT INTO users (full_name, username, email, password, role, first_login)
+            VALUES (%s, %s, %s, %s, 'Admin', FALSE)
         """, (full_name, username, email, password))
     conn.commit()
     cur.close()
@@ -187,6 +233,7 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
 
         # Add database indexes for performance
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
@@ -214,9 +261,11 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'User'
+            role TEXT NOT NULL DEFAULT 'User',
+            first_login BOOLEAN DEFAULT TRUE
         );''')
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT TRUE;")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
             id SERIAL PRIMARY KEY,
@@ -306,10 +355,17 @@ def dashboard():
         cur.close()
         release_db_connection(conn)
 
+        # Get analytics data
+        user_email = session.get('email')
+        user_role = session.get('role')
+        analytics_type, analytics_location, analytics_status = get_analytics_data(user_role, user_email)
+
         return render_template('dashboard.html', 
                              total=total, working=working, maint=maint, faulty=faulty, 
                              checked_out=checked_out, by_type=by_type, by_location=by_location,
-                             recent_activity=recent_activity)
+                             recent_activity=recent_activity,
+                             analytics_type=analytics_type, analytics_location=analytics_location, 
+                             analytics_status=analytics_status)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
         flash("An error occurred loading the dashboard.")
@@ -410,7 +466,8 @@ def edit_asset(id):
                     storage_type=%s,
                     location=%s,
                     status=%s,
-                    description=%s
+                    description=%s,
+                    owner_name=%s
                 WHERE id=%s
             """, (
                 request.form.get('asset_type'),
@@ -421,6 +478,7 @@ def edit_asset(id):
                 request.form.get('location'),
                 request.form.get('status'),
                 request.form.get('description'),
+                request.form.get('owner_name'),
                 id
             ))
 
@@ -551,7 +609,8 @@ def checkout_asset(id):
             UPDATE assets SET 
                 assigned_to = %s,
                 checkout_date = %s,
-                checkout_by = %s
+                checkout_by = %s,
+                status = 'Assigned'
             WHERE id = %s
         """, (assigned_to, datetime.now(), session.get('full_name'), id))
         
@@ -589,7 +648,8 @@ def checkin_asset(id):
             UPDATE assets SET 
                 assigned_to = NULL,
                 checkout_date = NULL,
-                checkout_by = NULL
+                checkout_by = NULL,
+                status = 'Returned'
             WHERE id = %s
         """, (id,))
         
@@ -658,8 +718,8 @@ def add_asset():
             cur.execute("""
                 INSERT INTO assets (
                     asset_type, tracking_number, cpu_name, serial_number,
-                    ram_size, storage_type, status, location, description, is_deleted
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, FALSE)
+                    ram_size, storage_type, status, location, description, is_deleted, owner_name
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, FALSE, %s)
             """, (
                 request.form.get('asset_type'),
                 tn,
@@ -669,7 +729,8 @@ def add_asset():
                 request.form.get('storage_type'),
                 request.form.get('status'),
                 request.form.get('location'),
-                request.form.get('description')
+                request.form.get('description'),
+                request.form.get('owner_name')
             ))
             conn.commit()
             cur.close()
@@ -714,6 +775,24 @@ def login():
                 if email in login_attempts:
                     del login_attempts[email]
 
+                # Check if first login
+                if user.get('first_login', True):
+                    session.permanent = True
+                    session.update({
+                        'user': user['username'],
+                        'role': user['role'],
+                        'full_name': user['full_name'] or user['username'],
+                        'email': user['email']
+                    })
+                    cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
+                               (user['full_name'] or user['username'], user['email']))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    log_access(user['email'], "LOGIN")
+                    app.logger.info(f"First login for: {email}")
+                    return redirect(url_for('change_password'))
+
                 session.permanent = True
                 session.update({
                     'user': user['username'],
@@ -747,6 +826,57 @@ def login():
             flash("An error occurred during login. Please try again.")
 
     return render_template('login.html')
+
+
+@app.route('/change_password', methods=['GET', 'POST'])
+def change_password():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if new_password != confirm_password:
+            flash("New passwords do not match.")
+            return render_template('change_password.html')
+        
+        # Validate password complexity
+        is_valid, msg = validate_password_complexity(new_password)
+        if not is_valid:
+            flash(msg)
+            return render_template('change_password.html')
+        
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute("SELECT password FROM users WHERE email = %s", (session.get('email'),))
+            user = cur.fetchone()
+            
+            # Check current password (plain text for compatibility)
+            if user and user['password'] == current_password:
+                # Update with new plain text password
+                cur.execute("UPDATE users SET password = %s, first_login = FALSE WHERE email = %s", 
+                           (new_password, session.get('email')))
+                conn.commit()
+                flash("Password changed successfully! Please login again.")
+                session.clear()
+                cur.close()
+                release_db_connection(conn)
+                return redirect(url_for('login'))
+            else:
+                flash("Current password is incorrect.")
+            
+            cur.close()
+            release_db_connection(conn)
+        except Exception as e:
+            app.logger.error(f"Password change error: {e}")
+            flash("An error occurred changing password.")
+        
+        return render_template('change_password.html')
+    
+    return render_template('change_password.html')
 
 
 @app.route('/logout')
@@ -909,23 +1039,22 @@ def manage_users():
             if role not in ('User', 'Admin'):
                 role = 'User'
             
-            password = request.form.get('password', '')
-            # Store password in plain text for project convenience
+            temp_password = generate_temp_password()
             
             try:
                 cur.execute("""
-                    INSERT INTO users (full_name, username, email, password, role)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO users (full_name, username, email, password, role, first_login)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
                 """, (
                     request.form.get('full_name') or request.form.get('username'),
                     request.form.get('username'),
                     request.form.get('email', '').strip().lower(),
-                    password,  # Plain text for project
+                    temp_password,
                     role
                 ))
                 conn.commit()
                 app.logger.info(f"User created: {request.form.get('email')}")
-                flash("User created successfully.")
+                flash(f"User created successfully. Temporary password: {temp_password}")
             except Exception as e:
                 conn.rollback()
                 app.logger.error(f"User creation error: {e}")
@@ -959,15 +1088,14 @@ def edit_user(id):
             new_password = request.form.get('password', '').strip()
 
             if new_password:
-                # Store password in plain text for project convenience
                 cur.execute("""
-                    UPDATE users SET full_name=%s, email=%s, role=%s, password=%s
+                    UPDATE users SET full_name=%s, email=%s, role=%s, password=%s, first_login=FALSE
                     WHERE id=%s
                 """, (
                     request.form.get('full_name'),
                     request.form.get('email', '').strip().lower(),
                     role,
-                    new_password,  # Plain text for project
+                    new_password,
                     id
                 ))
             else:
