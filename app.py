@@ -57,7 +57,6 @@ def get_db_connection():
     try:
         return connection_pool.getconn()
     except:
-        # Fallback to direct connection if pool fails
         return psycopg2.connect(url)
 
 
@@ -73,7 +72,6 @@ def is_admin():
 
 
 def validate_password_complexity(password):
-    """Validate password complexity requirements"""
     if len(password) < 8:
         return False, "Password must be at least 8 characters long"
     if not any(c.isupper() for c in password):
@@ -86,17 +84,14 @@ def validate_password_complexity(password):
 
 
 def generate_temp_password():
-    """Generate a secure temporary password"""
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(10))
 
 
 def check_rate_limit(email):
-    """Check if login attempts exceed rate limit (5 attempts per 15 minutes)"""
     now = datetime.now()
     if email in login_attempts:
         attempts = login_attempts[email]
-        # Remove attempts older than 15 minutes
         attempts = [t for t in attempts if (now - t).total_seconds() < 900]
         login_attempts[email] = attempts
         if len(attempts) >= 5:
@@ -134,73 +129,6 @@ def log_access(email, action):
         release_db_connection(conn)
     except Exception as e:
         app.logger.error(f"ACCESS LOG ERROR: {e}")
-
-
-def get_analytics_data(user_role, user_email=None):
-    """Get analytics data based on user role"""
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    
-    if user_role == 'Admin':
-        # Admin sees ALL assets
-        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
-        by_type = cur.fetchall()
-        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
-        by_location = cur.fetchall()
-        cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
-        by_status = cur.fetchall()
-        
-        # Asset age distribution (new: <30 days, old: >30 days)
-        cur.execute("""
-            SELECT 
-                CASE 
-                    WHEN created_at > NOW() - INTERVAL '30 days' THEN 'New (≤30 days)'
-                    ELSE 'Old (>30 days)'
-                END as age_group,
-                COUNT(*) as count
-            FROM assets 
-            WHERE is_deleted = FALSE AND created_at IS NOT NULL
-            GROUP BY age_group
-        """)
-        by_age = cur.fetchall()
-    else:
-        # User sees ONLY their assigned assets
-        cur.execute("""
-            SELECT asset_type, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s AND asset_type IS NOT NULL 
-            GROUP BY asset_type
-        """, (user_email,))
-        by_type = cur.fetchall()
-        cur.execute("""
-            SELECT location, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s AND location IS NOT NULL 
-            GROUP BY location
-        """, (user_email,))
-        by_location = cur.fetchall()
-        cur.execute("""
-            SELECT status, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s 
-            GROUP BY status
-        """, (user_email,))
-        by_status = cur.fetchall()
-        
-        # Asset age for user's assigned assets
-        cur.execute("""
-            SELECT 
-                CASE 
-                    WHEN created_at > NOW() - INTERVAL '30 days' THEN 'New (≤30 days)'
-                    ELSE 'Old (>30 days)'
-                END as age_group,
-                COUNT(*) as count
-            FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s AND created_at IS NOT NULL
-            GROUP BY age_group
-        """, (user_email,))
-        by_age = cur.fetchall()
-    
-    cur.close()
-    release_db_connection(conn)
-    return by_type, by_location, by_status, by_age
 
 
 def ensure_bootstrap_admin():
@@ -263,7 +191,6 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
 
-        # Add database indexes for performance
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);")
@@ -334,7 +261,7 @@ def safe_startup():
     try:
         init_db()
         ensure_bootstrap_admin()
-        app.logger.info(f"Startup OK. Bootstrap admin: {os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my')}")
+        app.logger.info(f"Startup OK.")
     except Exception as e:
         app.logger.error(f"STARTUP ERROR: {e}")
         traceback.print_exc()
@@ -355,8 +282,8 @@ def dashboard():
         user_role = session.get('role')
         user_email = session.get('email')
         
+        # For users, we need to match assigned_to with email or full_name
         if user_role == 'Admin':
-            # Admin sees ALL assets
             cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
             total = cur.fetchone()['count']
             cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Working' AND is_deleted = FALSE")
@@ -366,40 +293,91 @@ def dashboard():
             cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Faulty' AND is_deleted = FALSE")
             faulty = cur.fetchone()['count']
             cur.execute("SELECT COUNT(*) FROM assets WHERE assigned_to IS NOT NULL AND is_deleted = FALSE")
-            checked_out = cur.fetchone()['count']
+            assigned = cur.fetchone()['count']
+            
+            # Analytics for Admin - ALL assets
+            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
+            by_type = cur.fetchall()
+            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
+            by_location = cur.fetchall()
+            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+            by_status = cur.fetchall()
+            
         else:
-            # User sees ONLY their assigned assets
-            cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE AND assigned_to = %s", (user_email,))
+            # For User - match assigned_to with email OR full_name
+            cur.execute("""
+                SELECT COUNT(*) FROM assets 
+                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+            """, (user_email, session.get('full_name')))
             total = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Working' AND is_deleted = FALSE AND assigned_to = %s", (user_email,))
+            
+            cur.execute("""
+                SELECT COUNT(*) FROM assets 
+                WHERE status = 'Working' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+            """, (user_email, session.get('full_name')))
             working = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Maintenance' AND is_deleted = FALSE AND assigned_to = %s", (user_email,))
+            
+            cur.execute("""
+                SELECT COUNT(*) FROM assets 
+                WHERE status = 'Maintenance' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+            """, (user_email, session.get('full_name')))
             maint = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Faulty' AND is_deleted = FALSE AND assigned_to = %s", (user_email,))
+            
+            cur.execute("""
+                SELECT COUNT(*) FROM assets 
+                WHERE status = 'Faulty' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+            """, (user_email, session.get('full_name')))
             faulty = cur.fetchone()['count']
-            checked_out = total  # For users, all their assigned assets are checked out to them
+            
+            assigned = total
+            
+            # Analytics for User - only assigned assets
+            cur.execute("""
+                SELECT asset_type, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE AND asset_type IS NOT NULL 
+                AND (assigned_to = %s OR assigned_to = %s)
+                GROUP BY asset_type
+            """, (user_email, session.get('full_name')))
+            by_type = cur.fetchall()
+            
+            cur.execute("""
+                SELECT location, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE AND location IS NOT NULL 
+                AND (assigned_to = %s OR assigned_to = %s)
+                GROUP BY location
+            """, (user_email, session.get('full_name')))
+            by_location = cur.fetchall()
+            
+            cur.execute("""
+                SELECT status, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE 
+                AND (assigned_to = %s OR assigned_to = %s)
+                GROUP BY status
+            """, (user_email, session.get('full_name')))
+            by_status = cur.fetchall()
         
-        # Recent activity (same for both, but limit to relevant for users)
-        if user_role == 'Admin':
-            cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
-        else:
-            cur.execute("SELECT * FROM activity_logs WHERE user_email = %s ORDER BY created_at DESC LIMIT 10", (user_email,))
+        # Recent activity
+        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
         recent_activity = cur.fetchall()
         
         cur.close()
         release_db_connection(conn)
 
-        # Get analytics data
-        analytics_type, analytics_location, analytics_status, analytics_age = get_analytics_data(user_role, user_email)
+        # Convert to lists for JSON/Chart display
+        type_labels = [item['asset_type'] or 'Unknown' for item in by_type]
+        type_data = [item['count'] for item in by_type]
+        location_labels = [item['location'] or 'Unknown' for item in by_location]
+        location_data = [item['count'] for item in by_location]
+        status_labels = [item['status'] or 'Unknown' for item in by_status]
+        status_data = [item['count'] for item in by_status]
 
         return render_template('dashboard.html', 
                              total=total, working=working, maint=maint, faulty=faulty, 
-                             checked_out=checked_out,
+                             assigned=assigned,
                              recent_activity=recent_activity,
-                             analytics_type=analytics_type, 
-                             analytics_location=analytics_location, 
-                             analytics_status=analytics_status,
-                             analytics_age=analytics_age)
+                             type_labels=type_labels, type_data=type_data,
+                             location_labels=location_labels, location_data=location_data,
+                             status_labels=status_labels, status_data=status_data)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
         flash("An error occurred loading the dashboard.")
@@ -422,20 +400,16 @@ def index():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
-        query = "SELECT * FROM assets WHERE 1=1"
-        count_query = "SELECT COUNT(*) FROM assets WHERE 1=1"
+        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
+        count_query = "SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE"
         params = []
         
-        # Role-based filtering
+        # Role-based filtering - users see only their assigned assets
         if session.get('role') != 'Admin':
-            query += " AND assigned_to = %s"
-            count_query += " AND assigned_to = %s"
+            query += " AND (assigned_to = %s OR assigned_to = %s)"
+            count_query += " AND (assigned_to = %s OR assigned_to = %s)"
             params.append(session.get('email'))
-            query += " AND is_deleted = FALSE"
-            count_query += " AND is_deleted = FALSE"
-        else:
-            query += " AND is_deleted = FALSE"
-            count_query += " AND is_deleted = FALSE"
+            params.append(session.get('full_name'))
             
         if s:
             query += (
@@ -453,18 +427,15 @@ def index():
             count_query += " AND asset_type = %s"
             params.append(c)
 
-        # Get total count for pagination
         cur.execute(count_query, tuple(params))
         total = cur.fetchone()['count']
         
-        # Add sorting
         valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type']
         if sort not in valid_sorts:
             sort = 'id'
         order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
         query += f" ORDER BY {sort} {order_dir}"
         
-        # Add pagination
         offset = (page - 1) * per_page
         query += f" LIMIT {per_page} OFFSET {offset}"
         
@@ -507,11 +478,10 @@ def edit_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Check permission - users can only edit their assigned assets
         if session.get('role') != 'Admin':
             cur.execute("SELECT assigned_to FROM assets WHERE id = %s", (id,))
             asset_check = cur.fetchone()
-            if not asset_check or asset_check['assigned_to'] != session.get('email'):
+            if not asset_check or (asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name')):
                 flash("You don't have permission to edit this asset.")
                 cur.close()
                 release_db_connection(conn)
@@ -598,8 +568,7 @@ def view_asset(id):
             conn.close()
             return "Not Found", 404
         
-        # Check permission - users can only view their assigned assets
-        if session.get('role') != 'Admin' and asset['assigned_to'] != session.get('email'):
+        if session.get('role') != 'Admin' and asset['assigned_to'] != session.get('email') and asset['assigned_to'] != session.get('full_name'):
             flash("You don't have permission to view this asset.")
             cur.close()
             release_db_connection(conn)
@@ -672,7 +641,6 @@ def assign_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get user details from email
         cur.execute("SELECT email, full_name, username FROM users WHERE email = %s", (assigned_to_email,))
         user = cur.fetchone()
         
@@ -682,6 +650,7 @@ def assign_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
+        # Store both email and full_name for matching
         assigned_to_display = user['full_name'] if user['full_name'] else user['username']
         
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
@@ -703,7 +672,7 @@ def assign_asset(id):
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
-                f"ASSET ASSIGNED TO {assigned_to_display} ({assigned_to_email})",
+                f"ASSET ASSIGNED TO {assigned_to_display}",
                 row['serial_number']
             )
             app.logger.info(f"Asset assigned: {id} to {assigned_to_display}")
@@ -724,11 +693,10 @@ def return_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Check permission - users can return their assigned assets, admins can return any
         cur.execute("SELECT serial_number, assigned_to FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
         
-        if session.get('role') != 'Admin' and row and row['assigned_to'] != session.get('email'):
+        if session.get('role') != 'Admin' and row and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
             flash("You can only return assets assigned to you.")
             cur.close()
             release_db_connection(conn)
@@ -750,7 +718,7 @@ def return_asset(id):
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
-                f"ASSET RETURNED FROM {row['assigned_to'] or 'unknown'}",
+                f"ASSET RETURNED",
                 row['serial_number']
             )
             app.logger.info(f"Asset returned: {id}")
@@ -832,6 +800,7 @@ def add_asset():
                 request.form.get('serial_number')
             )
             app.logger.info(f"Asset added: {request.form.get('serial_number')}")
+            flash("Asset added successfully!")
             return redirect(url_for('index'))
         except Exception as e:
             app.logger.error(f"Add asset error: {e}")
@@ -876,7 +845,6 @@ def login():
                     cur.close()
                     conn.close()
                     log_access(user['email'], "LOGIN")
-                    app.logger.info(f"First login for: {email}")
                     return redirect(url_for('change_password'))
 
                 session.permanent = True
@@ -886,11 +854,8 @@ def login():
                     'full_name': user['full_name'] or user['username'],
                     'email': user['email']
                 })
-                cur.execute("""
-                    INSERT INTO login_logs (full_name, email) VALUES (%s, %s)
-                    """,
-                    (user['full_name'] or user['username'], user['email'])
-                )
+                cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
+                           (user['full_name'] or user['username'], user['email']))
                 conn.commit()
                 cur.close()
                 conn.close()
@@ -977,12 +942,7 @@ def activity():
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        if session.get('role') == 'Admin':
-            cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC")
-        else:
-            cur.execute("SELECT * FROM activity_logs WHERE user_email = %s ORDER BY created_at DESC", (session.get('email'),))
-        
+        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
         logs = cur.fetchall()
         cur.close()
         release_db_connection(conn)
@@ -1002,14 +962,12 @@ def export_csv():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        query = "SELECT * FROM assets WHERE 1=1"
+        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
+        params = []
         
         if session.get('role') != 'Admin':
-            query += " AND assigned_to = %s"
-            params = (session.get('email'),)
-        else:
-            query += " AND is_deleted = FALSE"
-            params = ()
+            query += " AND (assigned_to = %s OR assigned_to = %s)"
+            params = [session.get('email'), session.get('full_name')]
             
         query += " ORDER BY id DESC"
         cur.execute(query, params)
@@ -1044,14 +1002,12 @@ def export_excel():
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        query = "SELECT * FROM assets WHERE 1=1"
+        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
+        params = []
         
         if session.get('role') != 'Admin':
-            query += " AND assigned_to = %s"
-            params = (session.get('email'),)
-        else:
-            query += " AND is_deleted = FALSE"
-            params = ()
+            query += " AND (assigned_to = %s OR assigned_to = %s)"
+            params = [session.get('email'), session.get('full_name')]
             
         query += " ORDER BY id DESC"
         cur.execute(query, params)
