@@ -51,15 +51,17 @@
         .btn-qr:hover { background: #000 !important; }
         .btn-assign { color: #198754; border-right: 1px solid #dee2e6 !important; }
         .btn-assign:hover { background: #f0fff4; }
-        .btn-return { color: #fd7e14; border-right: 1px solid #dee2e6 !important; }
+        .btn-return { color: #fd7e14; }
         .btn-return:hover { background: #fff4e6; }
         .btn-del { color: #dc3545; border-left: 1px solid #dee2e6 !important; }
         .btn-del:hover { background: #fff5f5; }
         .row-deleted { background-color: #fff8f8 !important; border-left: 5px solid #dc3545 !important; opacity: 0.85; }
-        .row-assigned { background-color: #f0fff4 !important; border-left: 5px solid #198754 !important; }
+        .row-assigned { background-color: #e8f5e9 !important; border-left: 5px solid #198754 !important; }
+        body.dark-mode .row-assigned { background-color: #1a3a1a !important; }
         .table-container { background: white; border-radius: 15px; box-shadow: 0 4px 25px rgba(0,0,0,0.05); }
         .sortable { cursor: pointer; user-select: none; }
         .sortable:hover { background-color: #f8f9fa; }
+        body.dark-mode .sortable:hover { background-color: #2a2a4a; }
         .sortable i { opacity: 0.3; }
         .sortable:hover i { opacity: 1; }
         .loading-overlay {
@@ -80,17 +82,10 @@
             border-left: 4px solid var(--navy); animation: slideIn 0.3s ease;
         }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .role-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: var(--gold);
-            color: var(--navy);
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.7rem;
-            font-weight: bold;
-        }
+        .empty-state { text-align: center; padding: 60px 20px; }
+        .empty-state i { font-size: 4rem; color: #ccc; margin-bottom: 15px; }
+        .badge-assigned { background-color: #198754; }
+        .badge-available { background-color: #6c757d; }
     </style>
 </head>
 <body>
@@ -153,7 +148,7 @@
             {% if session.role == 'Admin' %}
                 <strong>Admin View:</strong> You can see and manage ALL assets in the system.
             {% else %}
-                <strong>User View:</strong> You can only see assets assigned to you. Contact admin for other assets.
+                <strong>My Assets View:</strong> Showing only assets assigned to you ({{ session.full_name }}).
             {% endif %}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         </div>
@@ -162,7 +157,7 @@
           {% if messages %}
             {% for message in messages %}
               <div class="alert alert-info alert-dismissible fade show">
-                {{ message }}
+                <i class="bi bi-check-circle me-1"></i> {{ message }}
                 <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
               </div>
             {% endfor %}
@@ -172,7 +167,7 @@
         <div class="row g-4 mb-4 text-center">
             <div class="col-md-3">
                 <div class="card stat-card p-3 bg-primary">
-                    <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
+                    <h6 class="small fw-bold text-uppercase opacity-75">My Assets</h6>
                     <h2 class="mb-0">{{ total }}</h2>
                 </div>
             </div>
@@ -198,11 +193,11 @@
 
         <div class="card p-4 mb-4 shadow-sm border-0 rounded-4">
             <form method="GET" action="/" class="row g-3 align-items-end">
-                <div class="col-md-3">
+                <div class="col-md-4">
                     <label class="form-label small fw-bold text-muted">Search</label>
                     <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, location..." value="{{ s_query }}">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Category</label>
                     <select name="category" class="form-select">
                         <option value="">All</option>
@@ -210,6 +205,7 @@
                         <option value="Desktop" {{ 'selected' if c_filter == 'Desktop' }}>Desktop</option>
                         <option value="Monitor" {{ 'selected' if c_filter == 'Monitor' }}>Monitor</option>
                         <option value="Printer" {{ 'selected' if c_filter == 'Printer' }}>Printer</option>
+                        <option value="Server" {{ 'selected' if c_filter == 'Server' }}>Server</option>
                     </select>
                 </div>
                 <div class="col-md-2">
@@ -218,32 +214,28 @@
                         <option value="id" {{ 'selected' if sort == 'id' }}>ID</option>
                         <option value="tracking_number" {{ 'selected' if sort == 'tracking_number' }}>Tracking</option>
                         <option value="cpu_name" {{ 'selected' if sort == 'cpu_name' }}>Model</option>
-                        <option value="serial_number" {{ 'selected' if sort == 'serial_number' }}>Serial</option>
                         <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
                         <option value="location" {{ 'selected' if sort == 'location' }}>Location</option>
-                        <option value="asset_type" {{ 'selected' if sort == 'asset_type' }}>Type</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small fw-bold text-muted">Order</label>
-                    <select name="order" class="form-select">
-                        <option value="desc" {{ 'selected' if order == 'desc' }}>Descending</option>
-                        <option value="asc" {{ 'selected' if order == 'asc' }}>Ascending</option>
                     </select>
                 </div>
                 <div class="col-md-3">
                     <div class="btn-group w-100 shadow-sm flex-wrap">
-                        <button type="submit" class="btn btn-primary fw-bold">FILTER</button>
-                        <a href="/export" class="btn btn-outline-primary fw-bold">CSV</a>
-                        <a href="/export/excel" class="btn btn-success fw-bold">EXCEL</a>
+                        <button type="submit" class="btn btn-primary fw-bold"><i class="bi bi-search me-1"></i>FILTER</button>
+                        <a href="/export" class="btn btn-outline-primary fw-bold"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+                        <a href="/export/excel" class="btn btn-success fw-bold"><i class="bi bi-file-earmark-excel me-1"></i>EXCEL</a>
                     </div>
                 </div>
             </form>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3 px-1 flex-wrap gap-2">
-            <h5 class="fw-bold mb-0 text-dark">Inventory ({{ total }} total)</h5>
+            <h5 class="fw-bold mb-0">
+                <i class="bi bi-list-check me-2 text-primary"></i>Assets 
+                <span class="badge bg-secondary rounded-pill">{{ total }}</span>
+            </h5>
+            {% if session.role == 'Admin' %}
             <a href="/add" class="btn btn-success btn-sm fw-bold shadow-sm"><i class="bi bi-plus-circle me-1"></i>NEW ASSET</a>
+            {% endif %}
         </div>
 
         <div class="table-container">
@@ -273,12 +265,12 @@
                                 {% if row.is_deleted %}
                                     <br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">ARCHIVED</span>
                                 {% endif %}
-                            </td>
+                            </span></td>
                             <td>
-                                <div class="fw-bold">{{ row.cpu_name }}</div>
+                                <div class="fw-bold">{{ row.cpu_name or 'N/A' }}</div>
                                 <small class="text-muted">S/N: {{ row.serial_number }}</small>
-                                <br><small class="text-muted">{{ row.asset_type }} | {{ row.location }}</small>
-                            </td>
+                                <br><small class="text-muted">{{ row.asset_type or 'N/A' }} | {{ row.location or 'N/A' }}</small>
+                            </span></td>
                             <td>
                                 <span class="badge {{ 'bg-success' if row.status == 'Working' or row.status == 'Available' else 'bg-warning text-dark' if row.status == 'Maintenance' else 'bg-danger' if row.status == 'Faulty' else 'bg-info' }} shadow-sm">
                                     {{ row.status if row.status else 'Available' }}
@@ -286,37 +278,37 @@
                             </span></td>
                             <td>
                                 {% if row.assigned_to %}
-                                    <span class="badge bg-success">{{ row.assigned_to }}</span>
+                                    <span class="badge bg-success"><i class="bi bi-person-check me-1"></i>{{ row.assigned_to }}</span>
                                     <br><small class="text-muted">Since: {{ row.checkout_date.strftime('%Y-%m-%d') if row.checkout_date else '' }}</small>
                                 {% else %}
-                                    <span class="text-muted small">Not Assigned</span>
+                                    <span class="badge bg-secondary"><i class="bi bi-person-x me-1"></i>Not Assigned</span>
                                 {% endif %}
                             </span></td>
                             <td>{{ row.owner_name or '-' }}</span></td>
                             <td class="text-center">
                                 <div class="manage-group">
-                                    <a href="/view/{{ row.id }}" class="btn btn-view">View</a>
-                                    <a href="/edit/{{ row.id }}" class="btn btn-edit">Edit</a>
-                                    <a href="/qr/{{ row.id }}" class="btn btn-qr">QR</a>
+                                    <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details"><i class="bi bi-eye"></i></a>
+                                    <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset"><i class="bi bi-pencil"></i></a>
+                                    <a href="/qr/{{ row.id }}" class="btn btn-qr" title="Generate QR Code"><i class="bi bi-qr-code"></i></a>
                                     {% if session.role == 'Admin' %}
                                         {% if row.assigned_to %}
                                             <form action="/return/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Return this asset? It will become available.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                <button type="submit" class="btn btn-return" title="Return Asset">Return</button>
+                                                <button type="submit" class="btn btn-return" title="Return Asset"><i class="bi bi-arrow-return-left"></i></button>
                                             </form>
                                         {% else %}
-                                            <button type="button" class="btn btn-assign" data-bs-toggle="modal" data-bs-target="#assignModal{{ row.id }}" title="Assign to User">Assign</button>
+                                            <button type="button" class="btn btn-assign" data-bs-toggle="modal" data-bs-target="#assignModal{{ row.id }}" title="Assign to User"><i class="bi bi-person-plus"></i></button>
                                         {% endif %}
                                     {% else %}
                                         {% if row.assigned_to == session.full_name or row.assigned_to == session.email %}
                                             <form action="/return/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Return this asset? It will become available.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                <button type="submit" class="btn btn-return" title="Return Asset">Return</button>
+                                                <button type="submit" class="btn btn-return" title="Return Asset"><i class="bi bi-arrow-return-left"></i></button>
                                             </form>
                                         {% endif %}
                                     {% endif %}
                                     {% if not row.is_deleted and session.role == 'Admin' %}
-                                        <button type="button" class="btn btn-del" onclick="confirmDelete('{{ row.tracking_number }}', {{ row.id }})" title="Archive">Del</button>
+                                        <button type="button" class="btn btn-del" onclick="confirmDelete('{{ row.tracking_number }}', {{ row.id }})" title="Archive"><i class="bi bi-archive"></i></button>
                                     {% endif %}
                                 </div>
                             </span></td>
@@ -326,12 +318,17 @@
                 </table>
             </div>
             {% if not data %}
-            <div class="p-5 text-center text-muted">
-                <i class="bi bi-clipboard-x fs-1"></i>
-                <p class="mt-2">No records found.</p>
-                {% if session.role != 'Admin' %}
-                <small>You can only see assets assigned to you. Contact your admin if you need access to other assets.</small>
-                {% endif %}
+            <div class="empty-state">
+                <i class="bi bi-inbox"></i>
+                <h5>No assets found</h5>
+                <p class="text-muted">
+                    {% if session.role != 'Admin' %}
+                        You don't have any assigned assets yet. Contact your administrator.
+                    {% else %}
+                        No assets have been added to the system yet.
+                        <br><a href="/add" class="btn btn-primary btn-sm mt-2">Add your first asset</a>
+                    {% endif %}
+                </p>
             </div>
             {% endif %}
         </div>
@@ -372,23 +369,27 @@
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Assign Asset to User</h5>
+                        <h5 class="modal-title"><i class="bi bi-person-plus me-2"></i>Assign Asset to User</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <p><strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})</p>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})
+                        </div>
                         <form action="/assign/{{ row.id }}" method="POST" id="assignForm{{ row.id }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <div class="mb-3">
-                                <label class="form-label">Select User</label>
+                                <label class="form-label fw-bold">Select User to Assign</label>
                                 <select name="assigned_to_email" class="form-select" required>
                                     <option value="">-- Select User --</option>
                                     {% for user in users %}
                                     <option value="{{ user.email }}">{{ user.email }} ({{ user.full_name or user.username }})</option>
                                     {% endfor %}
                                 </select>
+                                <small class="text-muted">Only registered users can be assigned assets</small>
                             </div>
-                            <button type="submit" class="btn btn-success w-100">Assign Asset</button>
+                            <button type="submit" class="btn btn-success w-100"><i class="bi bi-check-lg me-1"></i>Assign Asset</button>
                         </form>
                     </div>
                 </div>
@@ -453,7 +454,7 @@
         const warningTime = 5 * 60 * 1000;
         let warningShown = false;
         setTimeout(() => {
-            if (!warningShown) { warningShown = true; if (confirm('Your session will expire in 5 minutes. Extend?')) window.location.reload(); }
+            if (!warningShown) { warningShown = true; if (confirm('Your session will expire in 5 minutes. Click OK to stay logged in.')) window.location.reload(); }
         }, sessionTimeout - warningTime);
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
