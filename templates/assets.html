@@ -271,7 +271,7 @@
                                     <span class="text-muted small">Available</span>
                                 {% endif %}
                             </td>
-                            <td>{{ row.owner_name or '-' }}</td>
+                            <td>{{ row.owner_name or '-' }}</span></td>
                             <td class="text-center">
                                 <div class="manage-group">
                                     <a href="/view/{{ row.id }}" class="btn btn-view">View</a>
@@ -338,18 +338,23 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Check Out Asset</h5>
+                    <h5 class="modal-title">Assign Asset to User</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <p><strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})</p>
-                    <form action="/checkout/{{ row.id }}" method="POST">
+                    <form action="/checkout/{{ row.id }}" method="POST" id="checkoutForm{{ row.id }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <div class="mb-3">
-                            <label class="form-label">Assign To</label>
-                            <input type="text" name="assigned_to" class="form-control" placeholder="Enter name or staff ID" required>
+                            <label class="form-label">Select User (Email)</label>
+                            <select name="assigned_to_email" class="form-select" required>
+                                <option value="">-- Select User --</option>
+                                {% for user in users %}
+                                <option value="{{ user.email }}">{{ user.email }} ({{ user.full_name or user.username }})</option>
+                                {% endfor %}
+                            </select>
                         </div>
-                        <button type="submit" class="btn btn-success w-100">Check Out</button>
+                        <button type="submit" class="btn btn-success w-100">Assign Asset</button>
                     </form>
                 </div>
             </div>
