@@ -240,6 +240,7 @@
                                 Status <i class="bi bi-arrow-down-up"></i>
                             </th>
                             <th>Assigned To</th>
+                            <th>Owner Name</th>
                             <th class="text-center">Manage</th>
                         </tr>
                     </thead>
@@ -270,6 +271,7 @@
                                     <span class="text-muted small">Available</span>
                                 {% endif %}
                             </td>
+                            <td>{{ row.owner_name or '-' }}</td>
                             <td class="text-center">
                                 <div class="manage-group">
                                     <a href="/view/{{ row.id }}" class="btn btn-view">View</a>
