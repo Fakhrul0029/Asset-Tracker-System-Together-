@@ -13,7 +13,7 @@ import pandas as pd
 import logging
 from logging.handlers import RotatingFileHandler
 from functools import wraps
-from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, Response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, Response, jsonify
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -137,37 +137,17 @@ def log_access(email, action):
 
 
 def get_analytics_data(user_role, user_email=None):
-    """Get analytics data based on user role (Admin gets all, User gets assigned assets only)"""
+    """Get analytics data based on user role"""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     
-    if user_role == 'Admin':
-        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
-        by_type = cur.fetchall()
-        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
-        by_location = cur.fetchall()
-        cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
-        by_status = cur.fetchall()
-    else:
-        # User sees only assets assigned to them
-        cur.execute("""
-            SELECT asset_type, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s AND asset_type IS NOT NULL 
-            GROUP BY asset_type
-        """, (user_email,))
-        by_type = cur.fetchall()
-        cur.execute("""
-            SELECT location, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s AND location IS NOT NULL 
-            GROUP BY location
-        """, (user_email,))
-        by_location = cur.fetchall()
-        cur.execute("""
-            SELECT status, COUNT(*) as count FROM assets 
-            WHERE is_deleted = FALSE AND assigned_to = %s 
-            GROUP BY status
-        """, (user_email,))
-        by_status = cur.fetchall()
+    # Both Admin and User see ALL assets for analytics
+    cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
+    by_type = cur.fetchall()
+    cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
+    by_location = cur.fetchall()
+    cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+    by_status = cur.fetchall()
     
     cur.close()
     release_db_connection(conn)
@@ -428,6 +408,11 @@ def index():
         cur.execute(query, tuple(params))
         data = cur.fetchall()
 
+        # Get list of users for checkout dropdown
+        cur.execute("SELECT email, full_name, username FROM users ORDER BY email")
+        users_list = cur.fetchall()
+        users = [{'email': u['email'], 'full_name': u['full_name'], 'username': u['username']} for u in users_list]
+
         stats = {
             'total': total,
             'working': len([r for r in data if r['status'] == 'Working']),
@@ -440,7 +425,8 @@ def index():
         release_db_connection(conn)
 
         return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
-                             sort=sort, order=order, page=page, total_pages=total_pages, per_page=per_page)
+                             sort=sort, order=order, page=page, total_pages=total_pages, 
+                             per_page=per_page, users=users)
     except Exception as e:
         app.logger.error(f"Index error: {e}")
         flash("An error occurred loading assets.")
@@ -595,13 +581,26 @@ def checkout_asset(id):
         return redirect(url_for('login'))
 
     try:
-        assigned_to = request.form.get('assigned_to', '').strip()
-        if not assigned_to:
-            flash("Please specify who is checking out this asset.")
+        assigned_to_email = request.form.get('assigned_to_email', '').strip()
+        if not assigned_to_email:
+            flash("Please select a user to assign this asset.")
             return redirect(url_for('index'))
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        # Get user details from email
+        cur.execute("SELECT email, full_name, username FROM users WHERE email = %s", (assigned_to_email,))
+        user = cur.fetchone()
+        
+        if not user:
+            flash("Selected user not found.")
+            cur.close()
+            release_db_connection(conn)
+            return redirect(url_for('index'))
+        
+        assigned_to_display = user['full_name'] if user['full_name'] else user['username']
+        
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
         
@@ -612,7 +611,7 @@ def checkout_asset(id):
                 checkout_by = %s,
                 status = 'Assigned'
             WHERE id = %s
-        """, (assigned_to, datetime.now(), session.get('full_name'), id))
+        """, (assigned_to_display, datetime.now(), session.get('full_name'), id))
         
         conn.commit()
         cur.close()
@@ -621,11 +620,11 @@ def checkout_asset(id):
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
-                f"ASSET CHECKED OUT TO {assigned_to}",
+                f"ASSET CHECKED OUT TO {assigned_to_display} ({assigned_to_email})",
                 row['serial_number']
             )
-            app.logger.info(f"Asset checked out: {id} to {assigned_to}")
-        flash(f"Asset checked out to {assigned_to}.")
+            app.logger.info(f"Asset checked out: {id} to {assigned_to_display}")
+        flash(f"Asset assigned to {assigned_to_display}.")
         return redirect(url_for('index'))
     except Exception as e:
         app.logger.error(f"Checkout asset error: {e}")
@@ -1003,22 +1002,10 @@ def admin_dashboard():
         cur.execute("SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 100")
         login_logs = cur.fetchall()
 
-        # Asset analytics data
-        cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY asset_type")
-        asset_type_data = {row['asset_type'] or 'Unknown': row['count'] for row in cur.fetchall()}
-        
-        cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY location")
-        asset_location_data = {row['location'] or 'Unknown': row['count'] for row in cur.fetchall()}
-        
-        cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
-        asset_status_data = {row['status'] or 'Unknown': row['count'] for row in cur.fetchall()}
-
         cur.close()
         release_db_connection(conn)
 
-        return render_template('admin.html', users=users, access_logs=access_logs, login_logs=login_logs,
-                           asset_type_data=asset_type_data, asset_location_data=asset_location_data,
-                           asset_status_data=asset_status_data)
+        return render_template('admin.html', users=users, access_logs=access_logs, login_logs=login_logs)
     except Exception as e:
         app.logger.error(f"Admin dashboard error: {e}")
         flash("An error occurred loading the admin dashboard.")
