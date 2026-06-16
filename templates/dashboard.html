@@ -41,6 +41,19 @@
             border-radius: 15px;
             margin-bottom: 25px;
         }
+        .count-badge {
+            display: inline-block;
+            background: #e9ecef;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            margin: 2px;
+            color: #333;
+        }
+        body.dark-mode .count-badge {
+            background: #2a2a4a;
+            color: #ddd;
+        }
     </style>
 </head>
 <body>
@@ -60,6 +73,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/"><i class="bi bi-list-check me-1"></i>Assets</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -182,7 +198,14 @@
             </div>
         </div>
 
-        <!-- Analytics Charts Section - 3 Charts -->
+        <!-- Analytics Charts Section -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0"><i class="bi bi-graph-up me-2"></i>Analytics Overview</h5>
+            <a href="/export/analytics_report" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-download me-1"></i>Download Report
+            </a>
+        </div>
+
         <div class="row g-4 mb-4">
             <div class="col-md-4">
                 <div class="card chart-card p-3">
@@ -192,22 +215,32 @@
                     <div class="chart-container">
                         <canvas id="typeChart"></canvas>
                     </div>
-                    {% if type_labels|length == 0 %}
-                    <p class="text-center text-muted mt-2 small">No data available</p>
-                    {% endif %}
+                    <div class="text-center mt-2">
+                        {% for label in type_labels %}
+                            <span class="count-badge">{{ label }}: {{ type_data[loop.index0] }}</span>
+                        {% endfor %}
+                        {% if type_labels|length == 0 %}
+                            <p class="text-center text-muted mt-2 small">No data available</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="col-md-4">
                 <div class="card chart-card p-3">
                     <h6 class="fw-bold mb-2 text-center">
-                        <i class="bi bi-geo-alt me-1 text-success"></i>Assets by Location
+                        <i class="bi bi-building me-1 text-success"></i>Assets by Department
                     </h6>
                     <div class="chart-container">
                         <canvas id="locationChart"></canvas>
                     </div>
-                    {% if location_labels|length == 0 %}
-                    <p class="text-center text-muted mt-2 small">No data available</p>
-                    {% endif %}
+                    <div class="text-center mt-2">
+                        {% for label in location_labels %}
+                            <span class="count-badge">{{ label }}: {{ location_data[loop.index0] }}</span>
+                        {% endfor %}
+                        {% if location_labels|length == 0 %}
+                            <p class="text-center text-muted mt-2 small">No data available</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="col-md-4">
@@ -218,9 +251,14 @@
                     <div class="chart-container">
                         <canvas id="statusChart"></canvas>
                     </div>
-                    {% if status_labels|length == 0 %}
-                    <p class="text-center text-muted mt-2 small">No data available</p>
-                    {% endif %}
+                    <div class="text-center mt-2">
+                        {% for label in status_labels %}
+                            <span class="count-badge">{{ label }}: {{ status_data[loop.index0] }}</span>
+                        {% endfor %}
+                        {% if status_labels|length == 0 %}
+                            <p class="text-center text-muted mt-2 small">No data available</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
@@ -306,7 +344,7 @@
             });
         }
 
-        // Chart 2: Assets by Location (Bar)
+        // Chart 2: Assets by Department (Bar)
         const locationLabels = {{ location_labels|tojson }};
         const locationData = {{ location_data|tojson }};
         
@@ -349,7 +387,7 @@
                     labels: statusLabels,
                     datasets: [{ 
                         data: statusData, 
-                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d'],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d', '#fd7e14'],
                         borderWidth: 0,
                         hoverOffset: 10
                     }]
