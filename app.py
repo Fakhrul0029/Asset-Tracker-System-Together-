@@ -282,7 +282,6 @@ def dashboard():
         user_role = session.get('role')
         user_email = session.get('email')
         
-        # For users, we need to match assigned_to with email or full_name
         if user_role == 'Admin':
             cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
             total = cur.fetchone()['count']
@@ -295,16 +294,13 @@ def dashboard():
             cur.execute("SELECT COUNT(*) FROM assets WHERE assigned_to IS NOT NULL AND is_deleted = FALSE")
             assigned = cur.fetchone()['count']
             
-            # Analytics for Admin - ALL assets
             cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
             by_type = cur.fetchall()
             cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
             by_location = cur.fetchall()
             cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
             by_status = cur.fetchall()
-            
         else:
-            # For User - match assigned_to with email OR full_name
             cur.execute("""
                 SELECT COUNT(*) FROM assets 
                 WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
@@ -331,7 +327,6 @@ def dashboard():
             
             assigned = total
             
-            # Analytics for User - only assigned assets
             cur.execute("""
                 SELECT asset_type, COUNT(*) as count FROM assets 
                 WHERE is_deleted = FALSE AND asset_type IS NOT NULL 
@@ -356,14 +351,12 @@ def dashboard():
             """, (user_email, session.get('full_name')))
             by_status = cur.fetchall()
         
-        # Recent activity
         cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
         recent_activity = cur.fetchall()
         
         cur.close()
         release_db_connection(conn)
 
-        # Convert to lists for JSON/Chart display
         type_labels = [item['asset_type'] or 'Unknown' for item in by_type]
         type_data = [item['count'] for item in by_type]
         location_labels = [item['location'] or 'Unknown' for item in by_location]
@@ -404,7 +397,6 @@ def index():
         count_query = "SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE"
         params = []
         
-        # Role-based filtering - users see only their assigned assets
         if session.get('role') != 'Admin':
             query += " AND (assigned_to = %s OR assigned_to = %s)"
             count_query += " AND (assigned_to = %s OR assigned_to = %s)"
@@ -442,7 +434,6 @@ def index():
         cur.execute(query, tuple(params))
         data = cur.fetchall()
 
-        # Get list of users for assign dropdown (only for admin)
         users = []
         if session.get('role') == 'Admin':
             cur.execute("SELECT email, full_name, username FROM users ORDER BY email")
@@ -650,7 +641,6 @@ def assign_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Store both email and full_name for matching
         assigned_to_display = user['full_name'] if user['full_name'] else user['username']
         
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
@@ -707,7 +697,7 @@ def return_asset(id):
                 assigned_to = NULL,
                 checkout_date = NULL,
                 checkout_by = NULL,
-                status = 'Available'
+                status = 'Returned'
             WHERE id = %s
         """, (id,))
         
@@ -1041,6 +1031,315 @@ def export_excel():
         return redirect(url_for('index'))
 
 
+@app.route('/export/analytics_report')
+def export_analytics_report():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        user_role = session.get('role')
+        user_email = session.get('email')
+        
+        if user_role == 'Admin':
+            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
+            by_type = cur.fetchall()
+            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
+            by_location = cur.fetchall()
+            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+            by_status = cur.fetchall()
+            cur.execute("SELECT COUNT(*) as total FROM assets WHERE is_deleted = FALSE")
+            total_assets = cur.fetchone()['total']
+        else:
+            cur.execute("""
+                SELECT asset_type, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND asset_type IS NOT NULL 
+                GROUP BY asset_type
+            """, (user_email, session.get('full_name')))
+            by_type = cur.fetchall()
+            cur.execute("""
+                SELECT location, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND location IS NOT NULL 
+                GROUP BY location
+            """, (user_email, session.get('full_name')))
+            by_location = cur.fetchall()
+            cur.execute("""
+                SELECT status, COUNT(*) as count FROM assets 
+                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) 
+                GROUP BY status
+            """, (user_email, session.get('full_name')))
+            by_status = cur.fetchall()
+            cur.execute("""
+                SELECT COUNT(*) as total FROM assets 
+                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+            """, (user_email, session.get('full_name')))
+            total_assets = cur.fetchone()['total']
+        
+        cur.close()
+        release_db_connection(conn)
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Asset Analytics Report</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                .header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #1a2a6c; }}
+                .report-title {{ color: #1a2a6c; font-size: 24px; }}
+                .report-date {{ color: #666; font-size: 14px; }}
+                .summary {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 30px; }}
+                .summary h3 {{ margin-top: 0; color: #1a2a6c; }}
+                .summary-number {{ font-size: 36px; font-weight: bold; color: #1a2a6c; }}
+                .section {{ margin-bottom: 30px; }}
+                .section-title {{ background: #1a2a6c; color: white; padding: 10px; border-radius: 5px; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+                th {{ background: #f0f0f0; }}
+                .footer {{ text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1 class="report-title">JTDI Asset Tracker - Analytics Report</h1>
+                <p class="report-date">Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <p>User: {session.get('full_name')} ({session.get('role')})</p>
+            </div>
+            
+            <div class="summary">
+                <h3>Summary</h3>
+                <div class="summary-number">{total_assets}</div>
+                <p>Total Assets in System</p>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Assets by Type</h3>
+                <table>
+                    <tr><th>Asset Type</th><th>Count</th></tr>
+        """
+        
+        for item in by_type:
+            html_content += f"<tr><td>{item['asset_type'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
+        
+        html_content += """
+                </table>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Assets by Department</h3>
+                <table>
+                    <tr><th>Department</th><th>Count</th></tr>
+        """
+        
+        for item in by_location:
+            html_content += f"<tr><td>{item['location'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
+        
+        html_content += """
+                </table>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Assets by Status</h3>
+                <table>
+                    <tr><th>Status</th><th>Count</th></tr>
+        """
+        
+        for item in by_status:
+            html_content += f"<tr><td>{item['status'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
+        
+        html_content += f"""
+                </table>
+            </div>
+            
+            <div class="footer">
+                <p>JTDI Asset Tracker System - Confidential Report</p>
+                <p>This report was generated automatically. For questions, contact system administrator.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        output = io.BytesIO()
+        output.write(html_content.encode('utf-8'))
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/html',
+            as_attachment=True,
+            download_name=f"analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+        )
+    except Exception as e:
+        app.logger.error(f"Analytics report error: {e}")
+        flash("An error occurred generating the report.")
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/export/repair_request/<int:id>')
+def export_repair_request(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
+        asset = cur.fetchone()
+        cur.close()
+        release_db_connection(conn)
+        
+        if not asset:
+            flash("Asset not found.")
+            return redirect(url_for('index'))
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Repair Request Report</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                .header {{ text-align: center; margin-bottom: 30px; border-bottom: 2px solid #dc3545; padding-bottom: 20px; }}
+                .title {{ color: #dc3545; font-size: 24px; }}
+                .asset-info {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+                .info-row {{ margin-bottom: 10px; }}
+                .info-label {{ font-weight: bold; width: 150px; display: inline-block; }}
+                .section {{ margin-bottom: 30px; }}
+                .section-title {{ background: #dc3545; color: white; padding: 10px; border-radius: 5px; }}
+                .parts-table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
+                .parts-table th, .parts-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                .parts-table th {{ background: #f0f0f0; }}
+                .signature {{ margin-top: 40px; }}
+                .signature-line {{ margin-top: 30px; display: flex; justify-content: space-between; }}
+                .footer {{ margin-top: 40px; text-align: center; font-size: 12px; color: #666; }}
+                @media print {{
+                    body {{ margin: 0; }}
+                    .no-print {{ display: none; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="no-print" style="text-align: right; margin-bottom: 20px;">
+                <button onclick="window.print()" style="padding: 10px 20px; background: #1a2a6c; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    Print / Save as PDF
+                </button>
+            </div>
+            
+            <div class="header">
+                <h1 class="title">REPAIR REQUEST REPORT</h1>
+                <p>JTDI Asset Tracker System</p>
+                <p>Date: {datetime.now().strftime('%Y-%m-%d')}</p>
+            </div>
+            
+            <div class="asset-info">
+                <h3>Asset Information</h3>
+                <div class="info-row"><span class="info-label">Asset ID:</span> {asset['id']}</div>
+                <div class="info-row"><span class="info-label">Tracking Number:</span> {asset['tracking_number']}</div>
+                <div class="info-row"><span class="info-label">Asset Name/Model:</span> {asset['cpu_name'] or 'N/A'}</div>
+                <div class="info-row"><span class="info-label">Serial Number:</span> {asset['serial_number']}</div>
+                <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
+                <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
+                <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting for Repair</strong></div>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Required Parts / Components</h3>
+                <table class="parts-table">
+                    <thead>
+                        <tr><th>No.</th><th>Part Name</th><th>Quantity</th><th>Estimated Cost (RM)</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td style="height: 40px;"></td><td></td><td></td></tr>
+                        <tr><td>2</td><td style="height: 40px;"></td><td></td><td></td></tr>
+                        <tr><td>3</td><td style="height: 40px;"></td><td></td><td></td></tr>
+                        <tr><td>4</td><td style="height: 40px;"></td><td></td><td></td></tr>
+                        <tr><td>5</td><td style="height: 40px;"></td><td></td><td></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="section">
+                <h3 class="section-title">Remarks / Notes</h3>
+                <div style="height: 100px; border: 1px solid #ddd; padding: 10px; margin-top: 10px;"></div>
+            </div>
+            
+            <div class="signature">
+                <div class="signature-line">
+                    <div style="text-align: center;">
+                        <div style="height: 60px;"></div>
+                        <div style="border-top: 1px solid #000; width: 200px;"></div>
+                        <p>Requested By (Technician)</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="height: 60px;"></div>
+                        <div style="border-top: 1px solid #000; width: 200px;"></div>
+                        <p>Approved By (Supervisor)</p>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="height: 60px;"></div>
+                        <div style="border-top: 1px solid #000; width: 200px;"></div>
+                        <p>Received By (Store)</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p>This is a system-generated repair request. Please complete all required sections.</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        output = io.BytesIO()
+        output.write(html_content.encode('utf-8'))
+        output.seek(0)
+        
+        return send_file(
+            output,
+            mimetype='text/html',
+            as_attachment=True,
+            download_name=f"repair_request_{asset['tracking_number']}_{datetime.now().strftime('%Y%m%d')}.html"
+        )
+    except Exception as e:
+        app.logger.error(f"Repair request error: {e}")
+        flash("An error occurred generating the repair request.")
+        return redirect(url_for('index'))
+
+
+@app.route('/completed_assets')
+def completed_assets():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("""
+            SELECT a.*, m.comment as last_maintenance, m.log_date as last_maintenance_date
+            FROM assets a
+            LEFT JOIN maintenance_logs m ON a.id = m.asset_id
+            WHERE a.is_deleted = FALSE 
+            AND (a.assigned_to = %s OR a.assigned_to = %s)
+            AND a.status IN ('Returned', 'Completed', 'Cannot Be Repaired')
+            ORDER BY a.checkout_date DESC
+        """, (session.get('email'), session.get('full_name')))
+        
+        completed_assets = cur.fetchall()
+        cur.close()
+        release_db_connection(conn)
+        
+        return render_template('completed_assets.html', assets=completed_assets)
+    except Exception as e:
+        app.logger.error(f"Completed assets error: {e}")
+        flash("An error occurred loading completed assets.")
+        return redirect(url_for('dashboard'))
+
+
 @app.route('/admin')
 def admin_dashboard():
     if not is_admin():
@@ -1080,6 +1379,10 @@ def manage_users():
             if role not in ('User', 'Admin'):
                 role = 'User'
             
+            email = request.form.get('email', '').strip().lower()
+            username = email.split('@')[0].replace('.', '_').replace('-', '_')
+            full_name = request.form.get('full_name') or username
+            
             temp_password = generate_temp_password()
             
             try:
@@ -1087,19 +1390,20 @@ def manage_users():
                     INSERT INTO users (full_name, username, email, password, role, first_login)
                     VALUES (%s, %s, %s, %s, %s, TRUE)
                 """, (
-                    request.form.get('full_name') or request.form.get('username'),
-                    request.form.get('username'),
-                    request.form.get('email', '').strip().lower(),
+                    full_name,
+                    username,
+                    email,
                     temp_password,
                     role
                 ))
                 conn.commit()
-                app.logger.info(f"User created: {request.form.get('email')}")
-                flash(f"User created successfully. Temporary password: {temp_password}")
+                app.logger.info(f"User created: {email}")
+                flash(f"User created successfully! Temporary password: {temp_password}")
+                app.logger.info(f"Temporary password for {email}: {temp_password}")
             except Exception as e:
                 conn.rollback()
                 app.logger.error(f"User creation error: {e}")
-                flash("Error: Username or email already exists.")
+                flash("Error: Email already exists.")
 
         cur.execute("SELECT * FROM users ORDER BY id DESC")
         users = cur.fetchall()
