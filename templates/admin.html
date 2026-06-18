@@ -80,6 +80,9 @@
                         <a class="nav-link" href="/"><i class="bi bi-list-check me-1"></i>Assets</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
                     </li>
                     {% if session.role == 'Admin' %}
@@ -165,19 +168,19 @@
                             <tbody>
                                 {% for user in users %}
                                 <tr>
-                                    <td>{{ user.username }}</span></td>
-                                    <td>{{ user.full_name or '-' }}</span></td>
-                                    <td>{{ user.email }}</span></td>
+                                    <td>{{ user.username }}</td>
+                                    <td>{{ user.full_name or '-' }}</td>
+                                    <td>{{ user.email }}</td>
                                     <td>
                                         <span class="badge {% if user.role == 'Admin' %}bg-primary{% else %}bg-secondary{% endif %}">
                                             {{ user.role }}
                                         </span>
-                                    </span></td>
+                                    </td>
                                     <td>
                                         <span class="password-display">
                                             {{ user.password }}
                                         </span>
-                                    </span></td>
+                                    </td>
                                     <td>
                                         <a href="/admin/edit_user/{{ user.id }}" class="btn btn-sm btn-outline-primary">
                                             <i class="bi bi-pencil"></i> Edit
@@ -188,7 +191,7 @@
                                                 <i class="bi bi-trash"></i> Delete
                                             </button>
                                         </form>
-                                    </span></td>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -211,9 +214,9 @@
                             <tbody>
                                 {% for log in access_logs %}
                                 <tr>
-                                    <td>{{ log.user_email }}</span></span></td>
-                                    <td><span class="badge {{ 'bg-success' if log.action == 'LOGIN' else 'bg-danger' }}">{{ log.action }}</span></span></span></td>
-                                    <td>{{ log.created_at }}</span></span></td>
+                                    <td>{{ log.user_email }}</td>
+                                    <td><span class="badge {{ 'bg-success' if log.action == 'LOGIN' else 'bg-danger' }}">{{ log.action }}</span></td>
+                                    <td>{{ log.created_at }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -236,9 +239,9 @@
                             <tbody>
                                 {% for log in login_logs %}
                                 <tr>
-                                    <td>{{ log.login_time.strftime('%Y-%m-%d %H:%M:%S') if log.login_time else '' }}</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></td>
-                                    <td>{{ log.full_name }}</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></td>
-                                    <td>{{ log.email }}</span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></td>
+                                    <td>{{ log.login_time.strftime('%Y-%m-%d %H:%M:%S') if log.login_time else '' }}</td>
+                                    <td>{{ log.full_name }}</td>
+                                    <td>{{ log.email }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -262,24 +265,14 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
                         <div class="mb-3">
-                            <label for="username" class="form-label">Username *</label>
-                            <input type="text" class="form-control" id="username" name="username" required>
+                            <label for="full_name" class="form-label">Full Name (Optional)</label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" placeholder="Will be auto-generated from email if empty">
                         </div>
 
                         <div class="mb-3">
-                            <label for="full_name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="full_name" name="full_name">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email *</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password *</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                            <small class="text-muted">Min 8 chars, uppercase, lowercase, digit</small>
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required placeholder="user@example.com">
+                            <small class="text-muted">Username will be auto-generated from email</small>
                         </div>
 
                         <div class="mb-3">
@@ -290,8 +283,13 @@
                             </select>
                         </div>
 
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            A temporary password will be auto-generated and shown after creation.
+                        </div>
+
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-check-circle me-1"></i>Create User
+                            <i class="bi bi-person-plus me-1"></i>Create User
                         </button>
                     </form>
                 </div>
