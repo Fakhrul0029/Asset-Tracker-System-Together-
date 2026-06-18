@@ -29,6 +29,8 @@
         .card-header { background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%); color: white; border-radius: 12px 12px 0 0 !important; font-weight: 600; }
         .badge-completed { background-color: #6c757d; }
         .badge-returned { background-color: #28a745; }
+        .completed-date { font-size: 0.85rem; color: #6c757d; }
+        body.dark-mode .completed-date { color: #999; }
     </style>
 </head>
 <body>
@@ -73,9 +75,12 @@
     <div class="container py-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h4><i class="bi bi-check-circle me-2 text-success"></i>Completed Assets History</h4>
-            <a href="/" class="btn btn-outline-primary btn-sm">
-                <i class="bi bi-arrow-left me-1"></i>Back to Assets
-            </a>
+            <div>
+                <span class="badge bg-secondary me-2">{{ assets|length }} items</span>
+                <a href="/" class="btn btn-outline-primary btn-sm">
+                    <i class="bi bi-arrow-left me-1"></i>Back to Assets
+                </a>
+            </div>
         </div>
 
         {% if assets %}
@@ -83,26 +88,24 @@
                 {% for asset in assets %}
                 <div class="col-md-6 col-lg-4">
                     <div class="card">
-                        <div class="card-header">
-                            <i class="bi bi-box me-2"></i>{{ asset.tracking_number }}
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="bi bi-box me-2"></i>{{ asset.tracking_number }}</span>
+                            <span class="badge bg-success">Completed</span>
                         </div>
                         <div class="card-body">
-                            <h6>{{ asset.cpu_name }}</h6>
+                            <h6>{{ asset.cpu_name or 'N/A' }}</h6>
                             <p class="text-muted small mb-2">S/N: {{ asset.serial_number }}</p>
                             <hr>
                             <div class="row small">
                                 <div class="col-6"><strong>Type:</strong><br>{{ asset.asset_type or '-' }}</div>
                                 <div class="col-6"><strong>Department:</strong><br>{{ asset.location or '-' }}</div>
-                                <div class="col-6 mt-2"><strong>Final Status:</strong><br>
-                                    <span class="badge {{ 'bg-success' if asset.status == 'Returned' else 'bg-secondary' }}">
-                                        {{ asset.status }}
-                                    </span>
+                                <div class="col-6 mt-2"><strong>Status:</strong><br>
+                                    <span class="badge bg-success">{{ asset.status }}</span>
                                 </div>
-                                <div class="col-6 mt-2"><strong>Completion Date:</strong><br>{{ asset.checkout_date.strftime('%Y-%m-%d') if asset.checkout_date else '-' }}</div>
-                                {% if asset.last_maintenance %}
-                                <div class="col-12 mt-2"><strong>Last Maintenance:</strong><br><small>{{ asset.last_maintenance[:100] }}{% if asset.last_maintenance|length > 100 %}...{% endif %}</small></div>
-                                <div class="col-12 mt-1"><strong>Date:</strong> {{ asset.last_maintenance_date.strftime('%Y-%m-%d') if asset.last_maintenance_date else '-' }}</div>
-                                {% endif %}
+                                <div class="col-6 mt-2"><strong>Owner:</strong><br>{{ asset.owner_name or '-' }}</div>
+                                <div class="col-12 mt-2"><strong>Completed:</strong><br>
+                                    <span class="completed-date">{{ asset.completion_date.strftime('%Y-%m-%d %H:%M') if asset.completion_date else asset.checkout_date.strftime('%Y-%m-%d') if asset.checkout_date else '-' }}</span>
+                                </div>
                             </div>
                             <hr>
                             <a href="/view/{{ asset.id }}" class="btn btn-sm btn-outline-primary w-100">
@@ -118,7 +121,7 @@
                 <div class="card-body text-center py-5">
                     <i class="bi bi-archive fs-1 text-muted"></i>
                     <h5 class="mt-3">No Completed Assets</h5>
-                    <p class="text-muted">You haven't completed any assets yet.</p>
+                    <p class="text-muted">You haven't completed any assets yet. Assets appear here when you return them.</p>
                     <a href="/" class="btn btn-primary btn-sm">View Current Assets</a>
                 </div>
             </div>
