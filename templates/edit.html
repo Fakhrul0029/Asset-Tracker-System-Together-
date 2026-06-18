@@ -35,6 +35,8 @@
         .breadcrumb { background: transparent; padding: 0; }
         .breadcrumb-item a { color: var(--navy); text-decoration: none; }
         .breadcrumb-item.active { color: #6c757d; }
+        .permission-banner { border-left: 4px solid var(--gold); background: #fff8e1; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; }
+        body.dark-mode .permission-banner { background: #2a1a0a; border-left-color: var(--gold); }
     </style>
 </head>
 <body>
@@ -98,8 +100,18 @@
                 <div class="card">
                     <div class="card-header">
                         <i class="bi bi-pencil-square me-2"></i>Edit Asset
+                        {% if not is_admin %}
+                        <span class="badge bg-warning text-dark float-end">Limited Access</span>
+                        {% endif %}
                     </div>
                     <div class="card-body">
+                        {% if not is_admin %}
+                        <div class="permission-banner">
+                            <i class="bi bi-info-circle me-2"></i>
+                            <strong>Limited Edit Mode:</strong> You can only update the <strong>Status</strong> and add <strong>Maintenance Logs</strong> for assets assigned to you. For full asset details, please contact your administrator.
+                        </div>
+                        {% endif %}
+
                         {% with messages = get_flashed_messages() %}
                             {% if messages %}
                                 {% for message in messages %}
@@ -114,6 +126,8 @@
                         <form method="POST" action="{{ url_for('edit_asset', id=asset.id) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
+                            {% if is_admin %}
+                            <!-- Full edit form for admins -->
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="asset_type" class="form-label">Asset Type</label>
@@ -203,9 +217,27 @@
                                 <label for="owner_name" class="form-label">Owner Name *</label>
                                 <input type="text" class="form-control" id="owner_name" name="owner_name" value="{{ asset.owner_name or '' }}" required>
                             </div>
+                            {% else %}
+                            <!-- Limited edit for regular users - only show status and maintenance log -->
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>Asset:</strong> {{ asset.cpu_name }} ({{ asset.tracking_number }})
+                            </div>
 
-                            <hr>
-                            <h5>Maintenance Log</h5>
+                            <div class="row">
+                                <div class="col-md-12 mb-3">
+                                    <label for="status" class="form-label">Update Status *</label>
+                                    <select class="form-select" id="status" name="status" required>
+                                        <option value="Working" {% if asset.status == 'Working' %}selected{% endif %}>Working</option>
+                                        <option value="Maintenance" {% if asset.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
+                                        <option value="Faulty" {% if asset.status == 'Faulty' %}selected{% endif %}>Faulty</option>
+                                        <option value="Can Be Repaired" {% if asset.status == 'Can Be Repaired' %}selected{% endif %}>Can Be Repaired</option>
+                                        <option value="Cannot Be Repaired" {% if asset.status == 'Cannot Be Repaired' %}selected{% endif %}>Cannot Be Repaired</option>
+                                        <option value="Waiting for Repair" {% if asset.status == 'Waiting for Repair' %}selected{% endif %}>Waiting for Repair</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="row">
                                 <div class="col-md-4 mb-3">
                                     <label for="action_type" class="form-label">Action Type</label>
@@ -217,17 +249,37 @@
                                     </select>
                                 </div>
                                 <div class="col-md-8 mb-3">
-                                    <label for="comment" class="form-label">Comment</label>
+                                    <label for="comment" class="form-label">Maintenance Comment</label>
                                     <input type="text" class="form-control" id="comment" name="comment" placeholder="Add a maintenance comment (optional)">
                                 </div>
                             </div>
+
+                            <!-- Hidden fields to preserve asset data -->
+                            <input type="hidden" name="asset_type" value="{{ asset.asset_type }}">
+                            <input type="hidden" name="tracking_number" value="{{ asset.tracking_number }}">
+                            <input type="hidden" name="serial_number" value="{{ asset.serial_number }}">
+                            <input type="hidden" name="cpu_name" value="{{ asset.cpu_name }}">
+                            <input type="hidden" name="ram_size" value="{{ asset.ram_size }}">
+                            <input type="hidden" name="storage_type" value="{{ asset.storage_type }}">
+                            <input type="hidden" name="location" value="{{ asset.location }}">
+                            <input type="hidden" name="description" value="{{ asset.description }}">
+                            <input type="hidden" name="owner_name" value="{{ asset.owner_name }}">
+                            {% endif %}
+
+                            <hr>
+                            {% if not is_admin %}
+                            <div class="alert alert-secondary">
+                                <i class="bi bi-lock me-2"></i>
+                                <strong>Note:</strong> Only status and maintenance logs can be updated. For full asset details, contact your administrator.
+                            </div>
+                            {% endif %}
 
                             <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                                 <a href="{{ url_for('index') }}" class="btn btn-secondary">
                                     <i class="bi bi-x-circle me-1"></i>Cancel
                                 </a>
                                 <button type="submit" class="btn btn-primary">
-                                    <i class="bi bi-check-circle me-1"></i>Save Changes
+                                    <i class="bi bi-check-circle me-1"></i>{% if is_admin %}Save Changes{% else %}Update Status{% endif %}
                                 </button>
                             </div>
                         </form>
@@ -243,6 +295,32 @@
             localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
         }
         if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
+
+        // Auto-show repair request button when "Waiting for Repair" is selected
+        document.addEventListener('DOMContentLoaded', function() {
+            const statusSelect = document.getElementById('status');
+            if (statusSelect) {
+                statusSelect.addEventListener('change', function() {
+                    if (this.value === 'Waiting for Repair') {
+                        if (!document.getElementById('repairAlert')) {
+                            const alertDiv = document.createElement('div');
+                            alertDiv.id = 'repairAlert';
+                            alertDiv.className = 'alert alert-warning mt-2';
+                            alertDiv.innerHTML = `
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>Repair Request:</strong> 
+                                After saving, you can generate a repair request report from the Asset Details page.
+                                <a href="/view/{{ asset.id }}" class="btn btn-sm btn-warning ms-2">View Asset</a>
+                            `;
+                            statusSelect.parentNode.appendChild(alertDiv);
+                        }
+                    } else {
+                        const alertDiv = document.getElementById('repairAlert');
+                        if (alertDiv) alertDiv.remove();
+                    }
+                });
+            }
+        });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
