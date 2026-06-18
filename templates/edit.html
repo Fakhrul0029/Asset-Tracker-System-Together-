@@ -149,12 +149,29 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="ram_size" class="form-label">RAM Size</label>
-                                    <input type="text" class="form-control" id="ram_size" name="ram_size" value="{{ asset.ram_size }}">
+                                    <select class="form-select" id="ram_size" name="ram_size">
+                                        <option value="">Select RAM Size</option>
+                                        <option value="4 GB" {% if asset.ram_size == '4 GB' %}selected{% endif %}>4 GB</option>
+                                        <option value="8 GB" {% if asset.ram_size == '8 GB' %}selected{% endif %}>8 GB</option>
+                                        <option value="16 GB" {% if asset.ram_size == '16 GB' %}selected{% endif %}>16 GB</option>
+                                        <option value="32 GB" {% if asset.ram_size == '32 GB' %}selected{% endif %}>32 GB</option>
+                                        <option value="64 GB" {% if asset.ram_size == '64 GB' %}selected{% endif %}>64 GB</option>
+                                        <option value="128 GB" {% if asset.ram_size == '128 GB' %}selected{% endif %}>128 GB</option>
+                                    </select>
                                 </div>
 
                                 <div class="col-md-6 mb-3">
                                     <label for="storage_type" class="form-label">Storage Type</label>
-                                    <input type="text" class="form-control" id="storage_type" name="storage_type" value="{{ asset.storage_type }}">
+                                    <select class="form-select" id="storage_type" name="storage_type">
+                                        <option value="">Select Storage Type</option>
+                                        <option value="320GB HDD" {% if asset.storage_type == '320GB HDD' %}selected{% endif %}>320GB HDD</option>
+                                        <option value="500GB HDD" {% if asset.storage_type == '500GB HDD' %}selected{% endif %}>500GB HDD</option>
+                                        <option value="1TB HDD" {% if asset.storage_type == '1TB HDD' %}selected{% endif %}>1TB HDD</option>
+                                        <option value="256GB SSD" {% if asset.storage_type == '256GB SSD' %}selected{% endif %}>256GB SSD</option>
+                                        <option value="512GB SSD" {% if asset.storage_type == '512GB SSD' %}selected{% endif %}>512GB SSD</option>
+                                        <option value="1TB SSD" {% if asset.storage_type == '1TB SSD' %}selected{% endif %}>1TB SSD</option>
+                                        <option value="2TB SSD" {% if asset.storage_type == '2TB SSD' %}selected{% endif %}>2TB SSD</option>
+                                    </select>
                                 </div>
                             </div>
 
