@@ -181,7 +181,8 @@ def init_db():
             assigned_to TEXT,
             checkout_date TIMESTAMP,
             checkout_by TEXT,
-            completed_date TIMESTAMP
+            completed_date TIMESTAMP,
+            completed_by TEXT
         );''')
 
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
@@ -192,6 +193,7 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
 
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
@@ -201,6 +203,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed ON assets(completed_date);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed_by ON assets(completed_by);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
 
@@ -744,16 +747,17 @@ def return_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Update asset - set to Available, clear assignment, and set completed_date
+        # Update asset - set to Available, clear assignment, set completed_date and completed_by
         cur.execute("""
             UPDATE assets SET 
                 assigned_to = NULL,
                 checkout_date = NULL,
                 checkout_by = NULL,
                 status = 'Available',
-                completed_date = %s
+                completed_date = %s,
+                completed_by = %s
             WHERE id = %s
-        """, (datetime.now(), id))
+        """, (datetime.now(), session.get('full_name'), id))
         
         conn.commit()
         
@@ -1377,10 +1381,8 @@ def completed_assets():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get completed assets for the logged-in user
-        # Assets that have a completed_date set and were assigned to this user
         if session.get('role') == 'Admin':
-            # Admin sees all completed assets
+            # Admin sees ALL completed assets with who completed them
             cur.execute("""
                 SELECT * FROM assets 
                 WHERE is_deleted = FALSE 
@@ -1388,14 +1390,14 @@ def completed_assets():
                 ORDER BY completed_date DESC
             """)
         else:
-            # User sees only their completed assets
+            # User sees only assets they completed
             cur.execute("""
                 SELECT * FROM assets 
                 WHERE is_deleted = FALSE 
                 AND completed_date IS NOT NULL
-                AND (assigned_to = %s OR assigned_to = %s)
+                AND (completed_by = %s OR completed_by = %s)
                 ORDER BY completed_date DESC
-            """, (session.get('email'), session.get('full_name')))
+            """, (session.get('full_name'), session.get('email')))
         
         completed_assets = cur.fetchall()
         cur.close()
