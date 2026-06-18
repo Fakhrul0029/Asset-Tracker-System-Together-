@@ -107,6 +107,9 @@
                         <a class="nav-link active" href="/"><i class="bi bi-list-check me-1"></i>Assets</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
                     </li>
                     {% if session.role == 'Admin' %}
@@ -195,7 +198,7 @@
             <form method="GET" action="/" class="row g-3 align-items-end">
                 <div class="col-md-4">
                     <label class="form-label small fw-bold text-muted">Search</label>
-                    <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, location..." value="{{ s_query }}">
+                    <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, department..." value="{{ s_query }}">
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Category</label>
@@ -215,7 +218,7 @@
                         <option value="tracking_number" {{ 'selected' if sort == 'tracking_number' }}>Tracking</option>
                         <option value="cpu_name" {{ 'selected' if sort == 'cpu_name' }}>Model</option>
                         <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
-                        <option value="location" {{ 'selected' if sort == 'location' }}>Location</option>
+                        <option value="location" {{ 'selected' if sort == 'location' }}>Department</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -265,17 +268,17 @@
                                 {% if row.is_deleted %}
                                     <br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">ARCHIVED</span>
                                 {% endif %}
-                            </span></td>
+                            </td>
                             <td>
                                 <div class="fw-bold">{{ row.cpu_name or 'N/A' }}</div>
                                 <small class="text-muted">S/N: {{ row.serial_number }}</small>
                                 <br><small class="text-muted">{{ row.asset_type or 'N/A' }} | {{ row.location or 'N/A' }}</small>
-                            </span></td>
+                            </td>
                             <td>
                                 <span class="badge {{ 'bg-success' if row.status == 'Working' or row.status == 'Available' else 'bg-warning text-dark' if row.status == 'Maintenance' else 'bg-danger' if row.status == 'Faulty' else 'bg-info' }} shadow-sm">
                                     {{ row.status if row.status else 'Available' }}
                                 </span>
-                            </span></td>
+                            </td>
                             <td>
                                 {% if row.assigned_to %}
                                     <span class="badge bg-success"><i class="bi bi-person-check me-1"></i>{{ row.assigned_to }}</span>
@@ -283,8 +286,8 @@
                                 {% else %}
                                     <span class="badge bg-secondary"><i class="bi bi-person-x me-1"></i>Not Assigned</span>
                                 {% endif %}
-                            </span></td>
-                            <td>{{ row.owner_name or '-' }}</span></td>
+                            </td>
+                            <td>{{ row.owner_name or '-' }}</td>
                             <td class="text-center">
                                 <div class="manage-group">
                                     <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details"><i class="bi bi-eye"></i></a>
@@ -311,7 +314,7 @@
                                         <button type="button" class="btn btn-del" onclick="confirmDelete('{{ row.tracking_number }}', {{ row.id }})" title="Archive"><i class="bi bi-archive"></i></button>
                                     {% endif %}
                                 </div>
-                            </span></td>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
