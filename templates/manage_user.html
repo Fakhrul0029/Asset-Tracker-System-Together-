@@ -69,6 +69,9 @@
                         <a class="nav-link" href="/"><i class="bi bi-list-check me-1"></i>Assets</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
                     </li>
                     {% if session.role == 'Admin' %}
@@ -185,24 +188,14 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
                         <div class="mb-3">
-                            <label for="username" class="form-label">Username *</label>
-                            <input type="text" class="form-control" id="username" name="username" required>
+                            <label for="full_name" class="form-label">Full Name (Optional)</label>
+                            <input type="text" class="form-control" id="full_name" name="full_name" placeholder="Will be auto-generated from email if empty">
                         </div>
 
                         <div class="mb-3">
-                            <label for="full_name" class="form-label">Full Name</label>
-                            <input type="text" class="form-control" id="full_name" name="full_name">
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email *</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="password" class="form-label">Password *</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
-                            <small class="text-muted">Min 8 chars, uppercase, lowercase, digit</small>
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required placeholder="user@example.com">
+                            <small class="text-muted">Username will be auto-generated from email</small>
                         </div>
 
                         <div class="mb-3">
@@ -213,8 +206,13 @@
                             </select>
                         </div>
 
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            A temporary password will be auto-generated and shown after creation.
+                        </div>
+
                         <button type="submit" class="btn btn-primary w-100">
-                            <i class="bi bi-check-circle me-1"></i>Create User
+                            <i class="bi bi-person-plus me-1"></i>Create User
                         </button>
                     </form>
                 </div>
