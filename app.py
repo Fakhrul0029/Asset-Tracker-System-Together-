@@ -469,15 +469,57 @@ def edit_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
+        # Get the asset to check permissions
+        cur.execute("SELECT assigned_to, serial_number FROM assets WHERE id = %s", (id,))
+        asset_check = cur.fetchone()
+        
+        if not asset_check:
+            flash("Asset not found.")
+            cur.close()
+            release_db_connection(conn)
+            return redirect(url_for('index'))
+        
+        # Users can ONLY edit status and maintenance log for their assigned assets
+        # Admins can edit everything
         if session.get('role') != 'Admin':
-            cur.execute("SELECT assigned_to FROM assets WHERE id = %s", (id,))
-            asset_check = cur.fetchone()
-            if not asset_check or (asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name')):
-                flash("You don't have permission to edit this asset.")
+            if asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name'):
+                flash("You only have permission to update status and maintenance logs for assets assigned to you.")
                 cur.close()
                 release_db_connection(conn)
                 return redirect(url_for('index'))
+            
+            # For regular users, only allow status and maintenance log updates
+            if request.method == 'POST':
+                # Only update status and maintenance log
+                status = request.form.get('status')
+                comment = request.form.get('comment', '').strip()
+                action_type = request.form.get('action_type', 'Other')
+                
+                cur.execute("""
+                    UPDATE assets SET
+                        status = %s
+                    WHERE id = %s
+                """, (status, id))
+                
+                if comment:
+                    cur.execute("""
+                        INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by)
+                        VALUES (%s, %s, %s, %s)
+                    """, (id, action_type, comment, session.get('full_name')))
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                log_activity(
+                    session.get('email') or session.get('full_name'),
+                    f"ASSET STATUS UPDATED TO {status}",
+                    asset_check['serial_number']
+                )
+                flash("Asset status and maintenance log updated successfully!")
+                return redirect(url_for('index'))
 
+        # Admin gets full edit access
         if request.method == 'POST':
             cur.execute("""
                 UPDATE assets SET
@@ -540,7 +582,7 @@ def edit_asset(id):
             flash("Asset not found.")
             return redirect(url_for('index'))
 
-        return render_template('edit.html', asset=asset)
+        return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin')
     except Exception as e:
         app.logger.error(f"Edit asset error: {e}")
         flash("An error occurred updating the asset.")
@@ -683,36 +725,47 @@ def return_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        cur.execute("SELECT serial_number, assigned_to FROM assets WHERE id = %s", (id,))
+        cur.execute("SELECT serial_number, assigned_to, cpu_name, tracking_number FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
         
-        if session.get('role') != 'Admin' and row and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
+        if not row:
+            flash("Asset not found.")
+            cur.close()
+            release_db_connection(conn)
+            return redirect(url_for('index'))
+        
+        # Check permission - users can return their assigned assets, admins can return any
+        if session.get('role') != 'Admin' and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
             flash("You can only return assets assigned to you.")
             cur.close()
             release_db_connection(conn)
             return redirect(url_for('index'))
         
+        # Update asset - set to Available and clear assignment
         cur.execute("""
             UPDATE assets SET 
                 assigned_to = NULL,
                 checkout_date = NULL,
                 checkout_by = NULL,
-                status = 'Returned'
+                status = 'Available'
             WHERE id = %s
         """, (id,))
         
         conn.commit()
-        cur.close()
-        release_db_connection(conn)
-
+        
+        # Log the return activity
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
-                f"ASSET RETURNED",
+                f"ASSET RETURNED BY {session.get('full_name')} - Asset is now Available",
                 row['serial_number']
             )
-            app.logger.info(f"Asset returned: {id}")
-        flash("Asset returned successfully.")
+            app.logger.info(f"Asset returned: {id} by {session.get('full_name')}")
+        
+        cur.close()
+        release_db_connection(conn)
+        
+        flash(f"Asset '{row['cpu_name']} ({row['tracking_number']})' returned successfully and is now available.")
         return redirect(url_for('index'))
     except Exception as e:
         app.logger.error(f"Return asset error: {e}")
@@ -1244,6 +1297,7 @@ def export_repair_request(id):
                 <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
                 <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
                 <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting for Repair</strong></div>
+                <div class="info-row"><span class="info-label">Requested By:</span> {session.get('full_name')}</div>
             </div>
             
             <div class="section">
@@ -1319,15 +1373,20 @@ def completed_assets():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
+        # Get completed/returned assets for the logged-in user
+        # Look for assets that were returned by this user via activity logs
         cur.execute("""
-            SELECT a.*, m.comment as last_maintenance, m.log_date as last_maintenance_date
+            SELECT DISTINCT a.*, 
+                   al.created_at as completion_date,
+                   al.action as completion_action
             FROM assets a
-            LEFT JOIN maintenance_logs m ON a.id = m.asset_id
+            INNER JOIN activity_logs al ON a.serial_number = al.asset_serial
             WHERE a.is_deleted = FALSE 
-            AND (a.assigned_to = %s OR a.assigned_to = %s)
-            AND a.status IN ('Returned', 'Completed', 'Cannot Be Repaired')
-            ORDER BY a.checkout_date DESC
-        """, (session.get('email'), session.get('full_name')))
+            AND al.user_email = %s
+            AND al.action LIKE '%ASSET RETURNED%'
+            AND a.status IN ('Available', 'Returned', 'Completed')
+            ORDER BY al.created_at DESC
+        """, (session.get('email'),))
         
         completed_assets = cur.fetchall()
         cur.close()
