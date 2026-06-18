@@ -180,7 +180,8 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             assigned_to TEXT,
             checkout_date TIMESTAMP,
-            checkout_by TEXT
+            checkout_by TEXT,
+            completed_date TIMESTAMP
         );''')
 
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
@@ -190,6 +191,7 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
 
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
@@ -198,6 +200,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed ON assets(completed_date);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
 
@@ -741,15 +744,16 @@ def return_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Update asset - set to Available and clear assignment
+        # Update asset - set to Available, clear assignment, and set completed_date
         cur.execute("""
             UPDATE assets SET 
                 assigned_to = NULL,
                 checkout_date = NULL,
                 checkout_by = NULL,
-                status = 'Available'
+                status = 'Available',
+                completed_date = %s
             WHERE id = %s
-        """, (id,))
+        """, (datetime.now(), id))
         
         conn.commit()
         
@@ -757,15 +761,15 @@ def return_asset(id):
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
-                f"ASSET RETURNED BY {session.get('full_name')} - Asset is now Available",
+                f"ASSET COMPLETED AND RETURNED BY {session.get('full_name')}",
                 row['serial_number']
             )
-            app.logger.info(f"Asset returned: {id} by {session.get('full_name')}")
+            app.logger.info(f"Asset completed and returned: {id} by {session.get('full_name')}")
         
         cur.close()
         release_db_connection(conn)
         
-        flash(f"Asset '{row['cpu_name']} ({row['tracking_number']})' returned successfully and is now available.")
+        flash(f"Asset '{row['cpu_name']} ({row['tracking_number']})' completed and returned successfully!")
         return redirect(url_for('index'))
     except Exception as e:
         app.logger.error(f"Return asset error: {e}")
@@ -1373,20 +1377,25 @@ def completed_assets():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get completed/returned assets for the logged-in user
-        # Look for assets that were returned by this user via activity logs
-        cur.execute("""
-            SELECT DISTINCT a.*, 
-                   al.created_at as completion_date,
-                   al.action as completion_action
-            FROM assets a
-            INNER JOIN activity_logs al ON a.serial_number = al.asset_serial
-            WHERE a.is_deleted = FALSE 
-            AND al.user_email = %s
-            AND al.action LIKE '%ASSET RETURNED%'
-            AND a.status IN ('Available', 'Returned', 'Completed')
-            ORDER BY al.created_at DESC
-        """, (session.get('email'),))
+        # Get completed assets for the logged-in user
+        # Assets that have a completed_date set and were assigned to this user
+        if session.get('role') == 'Admin':
+            # Admin sees all completed assets
+            cur.execute("""
+                SELECT * FROM assets 
+                WHERE is_deleted = FALSE 
+                AND completed_date IS NOT NULL
+                ORDER BY completed_date DESC
+            """)
+        else:
+            # User sees only their completed assets
+            cur.execute("""
+                SELECT * FROM assets 
+                WHERE is_deleted = FALSE 
+                AND completed_date IS NOT NULL
+                AND (assigned_to = %s OR assigned_to = %s)
+                ORDER BY completed_date DESC
+            """, (session.get('email'), session.get('full_name')))
         
         completed_assets = cur.fetchall()
         cur.close()
