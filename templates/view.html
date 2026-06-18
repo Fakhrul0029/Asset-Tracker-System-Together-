@@ -34,6 +34,17 @@
         .breadcrumb { background: transparent; padding: 0; }
         .breadcrumb-item a { color: var(--navy); text-decoration: none; }
         .breadcrumb-item.active { color: #6c757d; }
+        .repair-banner {
+            background: linear-gradient(135deg, #fff3cd, #ffe69b);
+            border-left: 5px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        body.dark-mode .repair-banner {
+            background: linear-gradient(135deg, #3a2a0a, #4a3a1a);
+            border-left-color: #ffc107;
+        }
     </style>
 </head>
 <body>
@@ -96,8 +107,28 @@
                 <div class="card mb-4">
                     <div class="card-header">
                         <i class="bi bi-info-circle me-2"></i>Asset Details
+                        {% if asset.status == 'Waiting for Repair' %}
+                        <span class="badge bg-warning text-dark float-end">
+                            <i class="bi bi-tools me-1"></i>Waiting for Repair
+                        </span>
+                        {% endif %}
                     </div>
                     <div class="card-body">
+                        <!-- Repair Banner -->
+                        {% if asset.status == 'Waiting for Repair' %}
+                        <div class="repair-banner">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Repair Request Required</h6>
+                                    <p class="mb-0 small">This asset requires replacement parts. Generate a repair request report.</p>
+                                </div>
+                                <a href="/export/repair_request/{{ asset.id }}" class="btn btn-warning btn-sm">
+                                    <i class="bi bi-file-earmark-text me-1"></i>Generate Repair Request
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <span class="info-label">Tracking Number:</span>
@@ -136,7 +167,7 @@
                             <div class="col-md-6 mb-3">
                                 <span class="info-label">Status:</span>
                                 <p>
-                                    <span class="badge {{ 'bg-success' if asset.status == 'Working' else 'bg-warning text-dark' if asset.status == 'Maintenance' else 'bg-danger' }}">
+                                    <span class="badge {{ 'bg-success' if asset.status == 'Working' else 'bg-warning text-dark' if asset.status == 'Maintenance' else 'bg-danger' if asset.status == 'Faulty' else 'bg-info' if asset.status == 'Waiting for Repair' else 'bg-secondary' }}">
                                         {{ asset.status }}
                                     </span>
                                 </p>
@@ -173,17 +204,9 @@
                             <p>{{ asset.created_at.strftime('%Y-%m-%d %H:%M:%S') if asset.created_at else '-' }}</p>
                         </div>
 
-                        {% if asset.status == 'Waiting for Repair' %}
-                        <div class="mt-3 mb-3">
-                            <a href="/export/repair_request/{{ asset.id }}" class="btn btn-warning">
-                                <i class="bi bi-file-earmark-text me-1"></i>Generate Repair Request
-                            </a>
-                        </div>
-                        {% endif %}
-
                         <hr>
                         <a href="{{ url_for('edit_asset', id=asset.id) }}" class="btn btn-primary">
-                            <i class="bi bi-pencil-square me-1"></i>Edit Asset
+                            <i class="bi bi-pencil-square me-1"></i>{% if session.role == 'Admin' %}Edit Asset{% else %}Update Status{% endif %}
                         </a>
                         <a href="{{ url_for('index') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left me-1"></i>Back to Assets
@@ -193,7 +216,7 @@
             </div>
 
             <div class="col-lg-4">
-                <div class="card">
+                <div class="card mb-4">
                     <div class="card-header">
                         <i class="bi bi-clock-history me-2"></i>Maintenance History
                     </div>
@@ -216,6 +239,21 @@
                         {% endif %}
                     </div>
                 </div>
+
+                {% if asset.status == 'Waiting for Repair' %}
+                <div class="card border-warning">
+                    <div class="card-header bg-warning text-dark">
+                        <i class="bi bi-tools me-2"></i>Repair Request
+                    </div>
+                    <div class="card-body text-center">
+                        <i class="bi bi-file-earmark-text fs-1 text-warning"></i>
+                        <p class="mt-2">Generate a formal repair request report for this asset.</p>
+                        <a href="/export/repair_request/{{ asset.id }}" class="btn btn-warning w-100">
+                            <i class="bi bi-download me-1"></i>Download Repair Request
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
