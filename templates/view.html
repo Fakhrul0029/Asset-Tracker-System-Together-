@@ -15,6 +15,7 @@
         body.dark-mode .list-group-item { background-color: #1e1e3f; color: var(--dark-text); border-color: #3a3a5c; }
         body.dark-mode .text-muted { color: #999 !important; }
         body.dark-mode .info-label { color: var(--dark-text); }
+        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -44,6 +45,55 @@
         body.dark-mode .repair-banner {
             background: linear-gradient(135deg, #3a2a0a, #4a3a1a);
             border-left-color: #ffc107;
+        }
+        .bg-purple { background-color: #6f42c1; color: white; }
+        .timestamp-text { font-size: 0.85rem; color: #6c757d; }
+        body.dark-mode .timestamp-text { color: #999; }
+        .maintenance-log-item {
+            border-left: 3px solid var(--navy);
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .maintenance-log-item:hover {
+            background: #f0f0f0;
+        }
+        body.dark-mode .maintenance-log-item {
+            background: #1e1e3f;
+            border-left-color: var(--gold);
+        }
+        body.dark-mode .maintenance-log-item:hover {
+            background: #2a2a4a;
+        }
+        .log-timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+        body.dark-mode .log-timestamp {
+            color: #999;
+        }
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 5px;
+        }
+        .log-comment {
+            margin: 8px 0 4px 0;
+            font-size: 0.9rem;
+        }
+        .log-user {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+        body.dark-mode .log-user {
+            color: #999;
         }
     </style>
 </head>
@@ -107,23 +157,23 @@
                 <div class="card mb-4">
                     <div class="card-header">
                         <i class="bi bi-info-circle me-2"></i>Asset Details
-                        {% if asset.status == 'Waiting for Repair' %}
+                        {% if asset.status == 'Waiting Parts' %}
                         <span class="badge bg-warning text-dark float-end">
-                            <i class="bi bi-tools me-1"></i>Waiting for Repair
+                            <i class="bi bi-tools me-1"></i>Waiting Parts
                         </span>
                         {% endif %}
                     </div>
                     <div class="card-body">
-                        <!-- Repair Banner -->
-                        {% if asset.status == 'Waiting for Repair' %}
+                        <!-- Parts Request Banner -->
+                        {% if asset.status == 'Waiting Parts' %}
                         <div class="repair-banner">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <h6 class="mb-1"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Repair Request Required</h6>
-                                    <p class="mb-0 small">This asset requires replacement parts. Generate a repair request report.</p>
+                                    <h6 class="mb-1"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Parts Request Required</h6>
+                                    <p class="mb-0 small">This asset requires replacement parts. Generate a parts request report.</p>
                                 </div>
                                 <a href="/export/repair_request/{{ asset.id }}" class="btn btn-warning btn-sm">
-                                    <i class="bi bi-file-earmark-text me-1"></i>Generate Repair Request
+                                    <i class="bi bi-file-earmark-text me-1"></i>Generate Parts Request
                                 </a>
                             </div>
                         </div>
@@ -167,7 +217,15 @@
                             <div class="col-md-6 mb-3">
                                 <span class="info-label">Status:</span>
                                 <p>
-                                    <span class="badge {{ 'bg-success' if asset.status == 'Working' else 'bg-warning text-dark' if asset.status == 'Maintenance' else 'bg-danger' if asset.status == 'Faulty' else 'bg-info' if asset.status == 'Waiting for Repair' else 'bg-secondary' }}">
+                                    <span class="badge 
+                                        {% if asset.status == 'Available' %}bg-success
+                                        {% elif asset.status == 'Assigned' %}bg-primary
+                                        {% elif asset.status == 'Completed' %}bg-purple
+                                        {% elif asset.status == 'In Repair' %}bg-warning text-dark
+                                        {% elif asset.status == 'Waiting Parts' %}bg-warning text-dark
+                                        {% elif asset.status == 'Beyond Repair' %}bg-danger
+                                        {% else %}bg-secondary{% endif %} 
+                                    ">
                                         {{ asset.status }}
                                     </span>
                                 </p>
@@ -194,6 +252,12 @@
                                 <span class="info-label">Scan Count:</span>
                                 <p>{{ asset.scan_count or 0 }}</p>
                             </div>
+                            {% if asset.completed_date %}
+                            <div class="col-md-6 mb-3">
+                                <span class="info-label">Completed Date:</span>
+                                <p class="timestamp-text">{{ asset.completed_date.strftime('%Y-%m-%d %H:%M') if asset.completed_date else '-' }}</p>
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="mb-3">
                             <span class="info-label">Description:</span>
@@ -201,7 +265,7 @@
                         </div>
                         <div class="mb-3">
                             <span class="info-label">Created At:</span>
-                            <p>{{ asset.created_at.strftime('%Y-%m-%d %H:%M:%S') if asset.created_at else '-' }}</p>
+                            <p class="timestamp-text">{{ asset.created_at.strftime('%Y-%m-%d %H:%M:%S') if asset.created_at else '-' }}</p>
                         </div>
 
                         <hr>
@@ -222,34 +286,44 @@
                     </div>
                     <div class="card-body">
                         {% if logs %}
-                            <div class="list-group">
+                            <div class="maintenance-log-list">
                                 {% for log in logs %}
-                                <div class="list-group-item">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <strong>{{ log.action_type }}</strong>
-                                        <small class="text-muted">{{ log.log_date.strftime('%Y-%m-%d') if log.log_date else '' }}</small>
+                                <div class="maintenance-log-item">
+                                    <div class="log-header">
+                                        <span class="fw-bold">{{ log.action_type }}</span>
+                                        <span class="log-timestamp">
+                                            <i class="bi bi-calendar3 me-1"></i>
+                                            {{ log.log_date.strftime('%Y-%m-%d %H:%M') if log.log_date else 'N/A' }}
+                                        </span>
                                     </div>
-                                    <p class="mb-0 mt-1">{{ log.comment }}</p>
-                                    <small class="text-muted">By: {{ log.updated_by }}</small>
+                                    {% if log.comment %}
+                                    <div class="log-comment">{{ log.comment }}</div>
+                                    {% endif %}
+                                    <div class="log-user">
+                                        <i class="bi bi-person me-1"></i>By: {{ log.updated_by or 'Unknown' }}
+                                    </div>
                                 </div>
                                 {% endfor %}
                             </div>
                         {% else %}
-                            <p class="text-muted">No maintenance history.</p>
+                            <div class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                                <p class="mb-0">No maintenance history.</p>
+                            </div>
                         {% endif %}
                     </div>
                 </div>
 
-                {% if asset.status == 'Waiting for Repair' %}
+                {% if asset.status == 'Waiting Parts' %}
                 <div class="card border-warning">
                     <div class="card-header bg-warning text-dark">
-                        <i class="bi bi-tools me-2"></i>Repair Request
+                        <i class="bi bi-tools me-2"></i>Parts Request
                     </div>
                     <div class="card-body text-center">
                         <i class="bi bi-file-earmark-text fs-1 text-warning"></i>
-                        <p class="mt-2">Generate a formal repair request report for this asset.</p>
+                        <p class="mt-2">Generate a formal parts request report for this asset.</p>
                         <a href="/export/repair_request/{{ asset.id }}" class="btn btn-warning w-100">
-                            <i class="bi bi-download me-1"></i>Download Repair Request
+                            <i class="bi bi-download me-1"></i>Download Parts Request
                         </a>
                     </div>
                 </div>
