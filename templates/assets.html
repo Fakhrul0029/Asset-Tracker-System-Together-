@@ -21,6 +21,7 @@
         body.dark-mode .text-muted { color: #999 !important; }
         body.dark-mode .text-dark { color: var(--dark-text) !important; }
         body.dark-mode .manage-group { background: #1e1e3f; border-color: #3a3a5c; }
+        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -86,6 +87,7 @@
         .empty-state i { font-size: 4rem; color: #ccc; margin-bottom: 15px; }
         .badge-assigned { background-color: #198754; }
         .badge-available { background-color: #6c757d; }
+        .bg-purple { background-color: #6f42c1; color: white; }
     </style>
 </head>
 <body>
@@ -170,26 +172,26 @@
         <div class="row g-4 mb-4 text-center">
             <div class="col-md-3">
                 <div class="card stat-card p-3 bg-primary">
-                    <h6 class="small fw-bold text-uppercase opacity-75">My Assets</h6>
+                    <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
                     <h2 class="mb-0">{{ total }}</h2>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card stat-card p-3 bg-success">
-                    <h6 class="small fw-bold text-uppercase opacity-75">Working</h6>
-                    <h2 class="mb-0">{{ working }}</h2>
+                    <h6 class="small fw-bold text-uppercase opacity-75">Available</h6>
+                    <h2 class="mb-0">{{ available }}</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-primary">
+                    <h6 class="small fw-bold text-uppercase opacity-75">Assigned</h6>
+                    <h2 class="mb-0">{{ assigned }}</h2>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card stat-card p-3 bg-warning text-dark">
-                    <h6 class="small fw-bold text-uppercase opacity-75">Maintenance</h6>
-                    <h2 class="mb-0">{{ maint }}</h2>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stat-card p-3 bg-danger">
-                    <h6 class="small fw-bold text-uppercase opacity-75">Faulty</h6>
-                    <h2 class="mb-0">{{ faulty }}</h2>
+                    <h6 class="small fw-bold text-uppercase opacity-75">In Repair</h6>
+                    <h2 class="mb-0">{{ in_repair }}</h2>
                 </div>
             </div>
         </div>
@@ -275,8 +277,16 @@
                                 <br><small class="text-muted">{{ row.asset_type or 'N/A' }} | {{ row.location or 'N/A' }}</small>
                             </td>
                             <td>
-                                <span class="badge {{ 'bg-success' if row.status == 'Working' or row.status == 'Available' else 'bg-warning text-dark' if row.status == 'Maintenance' else 'bg-danger' if row.status == 'Faulty' else 'bg-info' }} shadow-sm">
-                                    {{ row.status if row.status else 'Available' }}
+                                <span class="badge 
+                                    {% if row.status == 'Available' %}bg-success
+                                    {% elif row.status == 'Assigned' %}bg-primary
+                                    {% elif row.status == 'Completed' %}bg-purple
+                                    {% elif row.status == 'In Repair' %}bg-warning text-dark
+                                    {% elif row.status == 'Waiting Parts' %}bg-warning text-dark
+                                    {% elif row.status == 'Beyond Repair' %}bg-danger
+                                    {% else %}bg-secondary{% endif %} 
+                                shadow-sm">
+                                    {{ row.status }}
                                 </span>
                             </td>
                             <td>
