@@ -131,19 +131,6 @@ def log_access(email, action):
         app.logger.error(f"ACCESS LOG ERROR: {e}")
 
 
-def get_status_badge_class(status):
-    """Return Bootstrap badge class for status"""
-    status_map = {
-        'Available': 'bg-success',
-        'Assigned': 'bg-primary',
-        'Completed': 'bg-purple',
-        'In Repair': 'bg-warning text-dark',
-        'Waiting Parts': 'bg-warning text-dark',
-        'Beyond Repair': 'bg-danger'
-    }
-    return status_map.get(status, 'bg-secondary')
-
-
 def ensure_bootstrap_admin():
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
     password = 'Admin123'
@@ -1270,7 +1257,7 @@ def export_repair_request(id):
         <html>
         <head>
             <meta charset="UTF-8">
-            <title>Repair Request Report</title>
+            <title>Parts Request Report</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 40px; }}
                 .header {{ text-align: center; margin-bottom: 30px; border-bottom: 2px solid #dc3545; padding-bottom: 20px; }}
@@ -1300,7 +1287,7 @@ def export_repair_request(id):
             </div>
             
             <div class="header">
-                <h1 class="title">REPAIR REQUEST REPORT</h1>
+                <h1 class="title">PARTS REQUEST REPORT</h1>
                 <p>JTDI Asset Tracker System</p>
                 <p>Date: {datetime.now().strftime('%Y-%m-%d')}</p>
             </div>
@@ -1359,7 +1346,7 @@ def export_repair_request(id):
             </div>
             
             <div class="footer">
-                <p>This is a system-generated repair request. Please complete all required sections.</p>
+                <p>This is a system-generated parts request. Please complete all required sections.</p>
             </div>
         </body>
         </html>
@@ -1373,11 +1360,11 @@ def export_repair_request(id):
             output,
             mimetype='text/html',
             as_attachment=True,
-            download_name=f"repair_request_{asset['tracking_number']}_{datetime.now().strftime('%Y%m%d')}.html"
+            download_name=f"parts_request_{asset['tracking_number']}_{datetime.now().strftime('%Y%m%d')}.html"
         )
     except Exception as e:
-        app.logger.error(f"Repair request error: {e}")
-        flash("An error occurred generating the repair request.")
+        app.logger.error(f"Parts request error: {e}")
+        flash("An error occurred generating the parts request.")
         return redirect(url_for('index'))
 
 
