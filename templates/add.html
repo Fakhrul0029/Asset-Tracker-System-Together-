@@ -35,6 +35,7 @@
         .breadcrumb { background: transparent; padding: 0; }
         .breadcrumb-item a { color: var(--navy); text-decoration: none; }
         .breadcrumb-item.active { color: #6c757d; }
+        .bg-purple { background-color: #6f42c1; color: white; }
     </style>
 </head>
 <body>
@@ -184,9 +185,12 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="status" class="form-label">Status *</label>
                                     <select class="form-select" id="status" name="status" required>
-                                        <option value="Working">Working</option>
-                                        <option value="Maintenance">Maintenance</option>
-                                        <option value="Faulty">Faulty</option>
+                                        <option value="Available">🟢 Available</option>
+                                        <option value="Assigned">🔵 Assigned</option>
+                                        <option value="Completed">🟣 Completed</option>
+                                        <option value="In Repair">🟡 In Repair</option>
+                                        <option value="Waiting Parts">🟠 Waiting Parts</option>
+                                        <option value="Beyond Repair">🔴 Beyond Repair</option>
                                     </select>
                                 </div>
                             </div>
