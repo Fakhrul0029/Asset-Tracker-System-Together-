@@ -15,6 +15,7 @@
         body.dark-mode .form-control, body.dark-mode .form-select { background-color: #1e1e3f; color: var(--dark-text); border-color: #3a3a5c; }
         body.dark-mode .form-label { color: var(--dark-text); }
         body.dark-mode .text-muted { color: #999 !important; }
+        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -37,6 +38,8 @@
         .breadcrumb-item.active { color: #6c757d; }
         .permission-banner { border-left: 4px solid var(--gold); background: #fff8e1; padding: 12px 15px; border-radius: 8px; margin-bottom: 20px; }
         body.dark-mode .permission-banner { background: #2a1a0a; border-left-color: var(--gold); }
+        .bg-purple { background-color: #6f42c1; color: white; }
+        .status-option { padding: 5px 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -198,12 +201,12 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="status" class="form-label">Status *</label>
                                     <select class="form-select" id="status" name="status" required>
-                                        <option value="Working" {% if asset.status == 'Working' %}selected{% endif %}>Working</option>
-                                        <option value="Maintenance" {% if asset.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-                                        <option value="Faulty" {% if asset.status == 'Faulty' %}selected{% endif %}>Faulty</option>
-                                        <option value="Can Be Repaired" {% if asset.status == 'Can Be Repaired' %}selected{% endif %}>Can Be Repaired</option>
-                                        <option value="Cannot Be Repaired" {% if asset.status == 'Cannot Be Repaired' %}selected{% endif %}>Cannot Be Repaired</option>
-                                        <option value="Waiting for Repair" {% if asset.status == 'Waiting for Repair' %}selected{% endif %}>Waiting for Repair</option>
+                                        <option value="Available" {% if asset.status == 'Available' %}selected{% endif %}>🟢 Available</option>
+                                        <option value="Assigned" {% if asset.status == 'Assigned' %}selected{% endif %}>🔵 Assigned</option>
+                                        <option value="Completed" {% if asset.status == 'Completed' %}selected{% endif %}>🟣 Completed</option>
+                                        <option value="In Repair" {% if asset.status == 'In Repair' %}selected{% endif %}>🟡 In Repair</option>
+                                        <option value="Waiting Parts" {% if asset.status == 'Waiting Parts' %}selected{% endif %}>🟠 Waiting Parts</option>
+                                        <option value="Beyond Repair" {% if asset.status == 'Beyond Repair' %}selected{% endif %}>🔴 Beyond Repair</option>
                                     </select>
                                 </div>
                             </div>
@@ -228,12 +231,12 @@
                                 <div class="col-md-12 mb-3">
                                     <label for="status" class="form-label">Update Status *</label>
                                     <select class="form-select" id="status" name="status" required>
-                                        <option value="Working" {% if asset.status == 'Working' %}selected{% endif %}>Working</option>
-                                        <option value="Maintenance" {% if asset.status == 'Maintenance' %}selected{% endif %}>Maintenance</option>
-                                        <option value="Faulty" {% if asset.status == 'Faulty' %}selected{% endif %}>Faulty</option>
-                                        <option value="Can Be Repaired" {% if asset.status == 'Can Be Repaired' %}selected{% endif %}>Can Be Repaired</option>
-                                        <option value="Cannot Be Repaired" {% if asset.status == 'Cannot Be Repaired' %}selected{% endif %}>Cannot Be Repaired</option>
-                                        <option value="Waiting for Repair" {% if asset.status == 'Waiting for Repair' %}selected{% endif %}>Waiting for Repair</option>
+                                        <option value="Available" {% if asset.status == 'Available' %}selected{% endif %}>🟢 Available</option>
+                                        <option value="Assigned" {% if asset.status == 'Assigned' %}selected{% endif %}>🔵 Assigned</option>
+                                        <option value="Completed" {% if asset.status == 'Completed' %}selected{% endif %}>🟣 Completed</option>
+                                        <option value="In Repair" {% if asset.status == 'In Repair' %}selected{% endif %}>🟡 In Repair</option>
+                                        <option value="Waiting Parts" {% if asset.status == 'Waiting Parts' %}selected{% endif %}>🟠 Waiting Parts</option>
+                                        <option value="Beyond Repair" {% if asset.status == 'Beyond Repair' %}selected{% endif %}>🔴 Beyond Repair</option>
                                     </select>
                                 </div>
                             </div>
@@ -251,6 +254,7 @@
                                 <div class="col-md-8 mb-3">
                                     <label for="comment" class="form-label">Maintenance Comment</label>
                                     <input type="text" class="form-control" id="comment" name="comment" placeholder="Add a maintenance comment (optional)">
+                                    <small class="text-muted">Timestamp will be auto-added</small>
                                 </div>
                             </div>
 
@@ -296,20 +300,20 @@
         }
         if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
 
-        // Auto-show repair request button when "Waiting for Repair" is selected
+        // Auto-show repair request button when "Waiting Parts" is selected
         document.addEventListener('DOMContentLoaded', function() {
             const statusSelect = document.getElementById('status');
             if (statusSelect) {
                 statusSelect.addEventListener('change', function() {
-                    if (this.value === 'Waiting for Repair') {
+                    if (this.value === 'Waiting Parts') {
                         if (!document.getElementById('repairAlert')) {
                             const alertDiv = document.createElement('div');
                             alertDiv.id = 'repairAlert';
                             alertDiv.className = 'alert alert-warning mt-2';
                             alertDiv.innerHTML = `
                                 <i class="bi bi-info-circle me-2"></i>
-                                <strong>Repair Request:</strong> 
-                                After saving, you can generate a repair request report from the Asset Details page.
+                                <strong>Parts Request:</strong> 
+                                After saving, you can generate a parts request report from the Asset Details page.
                                 <a href="/view/{{ asset.id }}" class="btn btn-sm btn-warning ms-2">View Asset</a>
                             `;
                             statusSelect.parentNode.appendChild(alertDiv);
