@@ -131,6 +131,19 @@ def log_access(email, action):
         app.logger.error(f"ACCESS LOG ERROR: {e}")
 
 
+def get_status_badge_class(status):
+    """Return Bootstrap badge class for status"""
+    status_map = {
+        'Available': 'bg-success',
+        'Assigned': 'bg-primary',
+        'Completed': 'bg-purple',
+        'In Repair': 'bg-warning text-dark',
+        'Waiting Parts': 'bg-warning text-dark',
+        'Beyond Repair': 'bg-danger'
+    }
+    return status_map.get(status, 'bg-secondary')
+
+
 def ensure_bootstrap_admin():
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
     password = 'Admin123'
@@ -291,14 +304,12 @@ def dashboard():
         if user_role == 'Admin':
             cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
             total = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Working' AND is_deleted = FALSE")
-            working = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Maintenance' AND is_deleted = FALSE")
-            maint = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Faulty' AND is_deleted = FALSE")
-            faulty = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE assigned_to IS NOT NULL AND is_deleted = FALSE")
+            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE")
+            available = cur.fetchone()['count']
+            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE")
             assigned = cur.fetchone()['count']
+            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE")
+            in_repair = cur.fetchone()['count']
             
             cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
             by_type = cur.fetchall()
@@ -315,23 +326,21 @@ def dashboard():
             
             cur.execute("""
                 SELECT COUNT(*) FROM assets 
-                WHERE status = 'Working' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+                WHERE status = 'Available' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
             """, (user_email, session.get('full_name')))
-            working = cur.fetchone()['count']
+            available = cur.fetchone()['count']
             
             cur.execute("""
                 SELECT COUNT(*) FROM assets 
-                WHERE status = 'Maintenance' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+                WHERE status = 'Assigned' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
             """, (user_email, session.get('full_name')))
-            maint = cur.fetchone()['count']
+            assigned = cur.fetchone()['count']
             
             cur.execute("""
                 SELECT COUNT(*) FROM assets 
-                WHERE status = 'Faulty' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
+                WHERE status = 'In Repair' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
             """, (user_email, session.get('full_name')))
-            faulty = cur.fetchone()['count']
-            
-            assigned = total
+            in_repair = cur.fetchone()['count']
             
             cur.execute("""
                 SELECT asset_type, COUNT(*) as count FROM assets 
@@ -371,8 +380,7 @@ def dashboard():
         status_data = [item['count'] for item in by_status]
 
         return render_template('dashboard.html', 
-                             total=total, working=working, maint=maint, faulty=faulty, 
-                             assigned=assigned,
+                             total=total, available=available, assigned=assigned, in_repair=in_repair,
                              recent_activity=recent_activity,
                              type_labels=type_labels, type_data=type_data,
                              location_labels=location_labels, location_data=location_data,
@@ -448,9 +456,9 @@ def index():
 
         stats = {
             'total': total,
-            'working': len([r for r in data if r['status'] == 'Working']),
-            'maint': len([r for r in data if r['status'] == 'Maintenance']),
-            'faulty': len([r for r in data if r['status'] == 'Faulty'])
+            'available': len([r for r in data if r['status'] == 'Available']),
+            'assigned': len([r for r in data if r['status'] == 'Assigned']),
+            'in_repair': len([r for r in data if r['status'] == 'In Repair'])
         }
         
         total_pages = (total + per_page - 1) // per_page
@@ -509,9 +517,9 @@ def edit_asset(id):
                 
                 if comment:
                     cur.execute("""
-                        INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by)
-                        VALUES (%s, %s, %s, %s)
-                    """, (id, action_type, comment, session.get('full_name')))
+                        INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (id, action_type, comment, session.get('full_name'), datetime.now()))
                 
                 conn.commit()
                 cur.close()
@@ -555,13 +563,14 @@ def edit_asset(id):
             comment = request.form.get('comment', '').strip()
             if comment:
                 cur.execute("""
-                    INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
+                    VALUES (%s, %s, %s, %s, %s)
                 """, (
                     id,
                     request.form.get('action_type'),
                     comment,
-                    session.get('full_name')
+                    session.get('full_name'),
+                    datetime.now()
                 ))
 
             cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
@@ -747,13 +756,13 @@ def return_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Update asset - set to Available, clear assignment, set completed_date and completed_by
+        # Update asset - set to Completed, clear assignment, set completed_date and completed_by
         cur.execute("""
             UPDATE assets SET 
                 assigned_to = NULL,
                 checkout_date = NULL,
                 checkout_by = NULL,
-                status = 'Available',
+                status = 'Completed',
                 completed_date = %s,
                 completed_by = %s
             WHERE id = %s
@@ -836,7 +845,7 @@ def add_asset():
                 request.form.get('serial_number'),
                 request.form.get('ram_size'),
                 request.form.get('storage_type'),
-                request.form.get('status'),
+                'Available',  # Default status
                 request.form.get('location'),
                 request.form.get('description'),
                 request.form.get('owner_name')
@@ -1304,7 +1313,7 @@ def export_repair_request(id):
                 <div class="info-row"><span class="info-label">Serial Number:</span> {asset['serial_number']}</div>
                 <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
                 <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting for Repair</strong></div>
+                <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting Parts</strong></div>
                 <div class="info-row"><span class="info-label">Requested By:</span> {session.get('full_name')}</div>
             </div>
             
