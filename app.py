@@ -164,6 +164,7 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     try:
+        # Create ALL tables first
         cur.execute('''CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             asset_type TEXT,
@@ -194,18 +195,6 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
-
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_location ON assets(location);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed ON assets(completed_date);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed_by ON assets(completed_by);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
             id SERIAL PRIMARY KEY,
@@ -250,7 +239,21 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
+        # NOW create all indexes AFTER tables exist
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_location ON assets(location);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed ON assets(completed_date);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed_by ON assets(completed_by);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
+
         conn.commit()
+        app.logger.info("Database initialized successfully!")
     except Exception as e:
         conn.rollback()
         app.logger.error(f"INIT DB ERROR: {e}")
@@ -267,7 +270,7 @@ def safe_startup():
     try:
         init_db()
         ensure_bootstrap_admin()
-        app.logger.info(f"Startup OK.")
+        app.logger.info(f"Startup OK. Bootstrap admin: {os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my')}")
     except Exception as e:
         app.logger.error(f"STARTUP ERROR: {e}")
         traceback.print_exc()
