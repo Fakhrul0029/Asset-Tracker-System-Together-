@@ -244,24 +244,27 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        cur.execute('''CREATE TABLE IF NOT EXISTS tickets (
+        # Create repair_requests table (replacing tickets)
+        cur.execute('''CREATE TABLE IF NOT EXISTS repair_requests (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER REFERENCES assets(id),
-            ticket_number TEXT UNIQUE NOT NULL,
-            subject TEXT NOT NULL,
-            description TEXT,
+            request_number TEXT UNIQUE NOT NULL,
+            issue_description TEXT NOT NULL,
             priority TEXT DEFAULT 'Medium',
-            status TEXT DEFAULT 'Open',
-            assigned_to TEXT,
+            status TEXT DEFAULT 'Pending',
+            scheduled_send_date DATE,
+            approved_by TEXT,
+            approved_date TIMESTAMP,
+            sent_date TIMESTAMP,
+            completed_date TIMESTAMP,
             created_by TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            closed_at TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        cur.execute('''CREATE TABLE IF NOT EXISTS ticket_comments (
+        cur.execute('''CREATE TABLE IF NOT EXISTS request_comments (
             id SERIAL PRIMARY KEY,
-            ticket_id INTEGER REFERENCES tickets(id),
+            request_id INTEGER REFERENCES repair_requests(id),
             comment TEXT NOT NULL,
             user_email TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -278,10 +281,9 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_created ON assets(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tickets_asset ON tickets(asset_id);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_logs(asset_id);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_date ON maintenance_logs(log_date);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_asset ON repair_requests(asset_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_status ON repair_requests(status);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_created ON repair_requests(created_at);")
 
         conn.commit()
         cur.close()
@@ -417,7 +419,6 @@ def index():
         app.logger.error(f"Index error: {e}")
         traceback.print_exc()
         flash("An error occurred loading assets.")
-        # Return the template with empty data instead of redirecting
         return render_template('assets.html', 
                              data=[], 
                              total=0, 
@@ -551,6 +552,335 @@ def dashboard():
         traceback.print_exc()
         flash("An error occurred loading the dashboard.")
         return redirect(url_for('login'))
+
+
+@app.route('/repair_requests')
+def repair_requests():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return render_template('repair_requests.html', requests=[], is_admin=is_admin())
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        if is_admin():
+            # Admin sees ALL requests
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name, a.serial_number
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                ORDER BY 
+                    CASE r.status 
+                        WHEN 'Pending' THEN 1
+                        WHEN 'Approved' THEN 2
+                        WHEN 'Sent' THEN 3
+                        WHEN 'Completed' THEN 4
+                        WHEN 'Rejected' THEN 5
+                    END,
+                    r.created_at DESC
+            """)
+        else:
+            # User sees ONLY their own requests
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name, a.serial_number
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                WHERE r.created_by = %s
+                ORDER BY r.created_at DESC
+            """, (session.get('email'),))
+        
+        requests = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return render_template('repair_requests.html', requests=requests, is_admin=is_admin())
+    except Exception as e:
+        app.logger.error(f"Repair requests error: {e}")
+        flash("An error occurred loading repair requests.")
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/repair_request/new', methods=['GET', 'POST'])
+def new_repair_request():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        try:
+            asset_id = request.form.get('asset_id')
+            issue_description = request.form.get('issue_description')
+            priority = request.form.get('priority', 'Medium')
+            scheduled_send_date = request.form.get('scheduled_send_date')
+            
+            if not issue_description:
+                flash("Issue description is required.")
+                return redirect(url_for('new_repair_request'))
+            
+            conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return redirect(url_for('repair_requests'))
+            cur = conn.cursor()
+            
+            # Generate request number
+            request_number = f"REQ-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+            
+            cur.execute("""
+                INSERT INTO repair_requests (
+                    asset_id, request_number, issue_description, priority, 
+                    status, scheduled_send_date, created_by
+                )
+                VALUES (%s, %s, %s, %s, 'Pending', %s, %s)
+            """, (
+                asset_id if asset_id else None, 
+                request_number, 
+                issue_description, 
+                priority, 
+                scheduled_send_date if scheduled_send_date else None,
+                session.get('email')
+            ))
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            log_activity(session.get('email'), f"REPAIR REQUEST CREATED: {request_number}", None)
+            flash(f"Repair request {request_number} created successfully! Waiting for admin approval.")
+            return redirect(url_for('repair_requests'))
+        except Exception as e:
+            app.logger.error(f"New repair request error: {e}")
+            flash("An error occurred creating the repair request.")
+            return redirect(url_for('repair_requests'))
+    
+    # GET request - show form
+    conn = get_db_connection()
+    if not conn:
+        flash("Database connection error.")
+        return redirect(url_for('repair_requests'))
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT id, tracking_number, cpu_name, serial_number FROM assets WHERE is_deleted = FALSE")
+    assets = cur.fetchall()
+    cur.close()
+    conn.close()
+    
+    return render_template('new_repair_request.html', assets=assets)
+
+
+@app.route('/repair_request/<int:id>')
+def view_repair_request(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("""
+            SELECT r.*, a.tracking_number, a.cpu_name as asset_name, a.serial_number
+            FROM repair_requests r
+            LEFT JOIN assets a ON r.asset_id = a.id
+            WHERE r.id = %s
+        """, (id,))
+        request_data = cur.fetchone()
+        
+        if not request_data:
+            flash("Repair request not found.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('repair_requests'))
+        
+        # Check permission
+        if not is_admin() and request_data['created_by'] != session.get('email'):
+            flash("You don't have permission to view this request.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('repair_requests'))
+        
+        # Get comments
+        cur.execute("""
+            SELECT * FROM request_comments 
+            WHERE request_id = %s 
+            ORDER BY created_at ASC
+        """, (id,))
+        comments = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return render_template('repair_request_detail.html', request=request_data, comments=comments, is_admin=is_admin())
+    except Exception as e:
+        app.logger.error(f"View repair request error: {e}")
+        flash("An error occurred loading the repair request.")
+        return redirect(url_for('repair_requests'))
+
+
+@app.route('/repair_request/<int:id>/comment', methods=['POST'])
+def add_repair_comment(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        comment = request.form.get('comment', '').strip()
+        if not comment:
+            flash("Comment cannot be empty.")
+            return redirect(url_for('view_repair_request', id=id))
+        
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('view_repair_request', id=id))
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO request_comments (request_id, comment, user_email)
+            VALUES (%s, %s, %s)
+        """, (id, comment, session.get('email')))
+        cur.execute("UPDATE repair_requests SET updated_at = %s WHERE id = %s", (datetime.now(), id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        log_activity(session.get('email'), f"COMMENT ADDED TO REPAIR REQUEST #{id}", None)
+        flash("Comment added successfully!")
+        return redirect(url_for('view_repair_request', id=id))
+    except Exception as e:
+        app.logger.error(f"Add comment error: {e}")
+        flash("An error occurred adding the comment.")
+        return redirect(url_for('view_repair_request', id=id))
+
+
+@app.route('/repair_request/<int:id>/approve', methods=['POST'])
+def approve_repair_request(id):
+    if 'user' not in session or not is_admin():
+        flash("Only admins can approve repair requests.")
+        return redirect(url_for('repair_requests'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE repair_requests 
+            SET status = 'Approved', 
+                approved_by = %s, 
+                approved_date = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (session.get('full_name'), datetime.now(), datetime.now(), id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Request #{id}", None)
+        flash("Repair request approved successfully!")
+        return redirect(url_for('view_repair_request', id=id))
+    except Exception as e:
+        app.logger.error(f"Approve repair request error: {e}")
+        flash("An error occurred approving the request.")
+        return redirect(url_for('view_repair_request', id=id))
+
+
+@app.route('/repair_request/<int:id>/reject', methods=['POST'])
+def reject_repair_request(id):
+    if 'user' not in session or not is_admin():
+        flash("Only admins can reject repair requests.")
+        return redirect(url_for('repair_requests'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE repair_requests 
+            SET status = 'Rejected', 
+                updated_at = %s
+            WHERE id = %s
+        """, (datetime.now(), id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        log_activity(session.get('email'), f"REPAIR REQUEST REJECTED: Request #{id}", None)
+        flash("Repair request rejected.")
+        return redirect(url_for('view_repair_request', id=id))
+    except Exception as e:
+        app.logger.error(f"Reject repair request error: {e}")
+        flash("An error occurred rejecting the request.")
+        return redirect(url_for('view_repair_request', id=id))
+
+
+@app.route('/repair_request/<int:id>/mark_sent', methods=['POST'])
+def mark_repair_sent(id):
+    if 'user' not in session or not is_admin():
+        flash("Only admins can mark requests as sent.")
+        return redirect(url_for('repair_requests'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE repair_requests 
+            SET status = 'Sent', 
+                sent_date = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (datetime.now(), datetime.now(), id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        log_activity(session.get('email'), f"REPAIR REQUEST MARKED AS SENT: Request #{id}", None)
+        flash("Repair request marked as sent to JTDI!")
+        return redirect(url_for('view_repair_request', id=id))
+    except Exception as e:
+        app.logger.error(f"Mark repair sent error: {e}")
+        flash("An error occurred marking the request as sent.")
+        return redirect(url_for('view_repair_request', id=id))
+
+
+@app.route('/repair_request/<int:id>/mark_completed', methods=['POST'])
+def mark_repair_completed(id):
+    if 'user' not in session or not is_admin():
+        flash("Only admins can mark requests as completed.")
+        return redirect(url_for('repair_requests'))
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE repair_requests 
+            SET status = 'Completed', 
+                completed_date = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (datetime.now(), datetime.now(), id))
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        log_activity(session.get('email'), f"REPAIR REQUEST COMPLETED: Request #{id}", None)
+        flash("Repair request marked as completed!")
+        return redirect(url_for('view_repair_request', id=id))
+    except Exception as e:
+        app.logger.error(f"Mark repair completed error: {e}")
+        flash("An error occurred marking the request as completed.")
+        return redirect(url_for('view_repair_request', id=id))
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -714,14 +1044,19 @@ def view_asset(id):
         
         maintenance_count = get_maintenance_count(id)
         
-        cur.execute("SELECT * FROM tickets WHERE asset_id = %s ORDER BY created_at DESC", (id,))
-        tickets_data = cur.fetchall()
+        # Get repair requests for this asset
+        cur.execute("""
+            SELECT * FROM repair_requests 
+            WHERE asset_id = %s 
+            ORDER BY created_at DESC
+        """, (id,))
+        repair_requests = cur.fetchall()
         
         conn.commit()
         cur.close()
         conn.close()
 
-        return render_template('view.html', asset=asset, logs=logs, tickets=tickets_data, maintenance_count=maintenance_count)
+        return render_template('view.html', asset=asset, logs=logs, repair_requests=repair_requests, maintenance_count=maintenance_count)
     except Exception as e:
         app.logger.error(f"View asset error: {e}")
         flash("An error occurred loading the asset.")
@@ -1080,248 +1415,6 @@ def delete_asset(id):
         app.logger.error(f"Delete asset error: {e}")
         flash("An error occurred archiving the asset.")
         return redirect(url_for('index'))
-
-
-@app.route('/tickets')
-def tickets():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('dashboard'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        if session.get('role') == 'Admin':
-            cur.execute("""
-                SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
-                FROM tickets t
-                LEFT JOIN assets a ON t.asset_id = a.id
-                ORDER BY t.created_at DESC
-            """)
-        else:
-            cur.execute("""
-                SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
-                FROM tickets t
-                LEFT JOIN assets a ON t.asset_id = a.id
-                WHERE t.created_by = %s OR t.assigned_to = %s
-                ORDER BY t.created_at DESC
-            """, (session.get('email'), session.get('full_name')))
-        
-        tickets_data = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        return render_template('tickets.html', tickets=tickets_data)
-    except Exception as e:
-        app.logger.error(f"Tickets error: {e}")
-        flash("An error occurred loading tickets.")
-        return redirect(url_for('dashboard'))
-
-
-@app.route('/ticket/new', methods=['GET', 'POST'])
-def new_ticket():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    if request.method == 'POST':
-        try:
-            asset_id = request.form.get('asset_id')
-            subject = request.form.get('subject')
-            description = request.form.get('description')
-            priority = request.form.get('priority', 'Medium')
-            
-            if not subject:
-                flash("Subject is required.")
-                return redirect(url_for('new_ticket'))
-            
-            conn = get_db_connection()
-            if not conn:
-                flash("Database connection error.")
-                return redirect(url_for('tickets'))
-            cur = conn.cursor()
-            
-            ticket_number = f"TICKET-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
-            
-            cur.execute("""
-                INSERT INTO tickets (asset_id, ticket_number, subject, description, priority, status, created_by, assigned_to)
-                VALUES (%s, %s, %s, %s, %s, 'Open', %s, %s)
-            """, (asset_id if asset_id else None, ticket_number, subject, description, priority, 
-                  session.get('email'), session.get('full_name')))
-            
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            log_activity(session.get('email'), f"TICKET CREATED: {ticket_number}", None)
-            flash(f"Ticket {ticket_number} created successfully!")
-            return redirect(url_for('tickets'))
-        except Exception as e:
-            app.logger.error(f"New ticket error: {e}")
-            flash("An error occurred creating the ticket.")
-            return redirect(url_for('tickets'))
-    
-    conn = get_db_connection()
-    if not conn:
-        flash("Database connection error.")
-        return redirect(url_for('tickets'))
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute("SELECT id, tracking_number, cpu_name FROM assets WHERE is_deleted = FALSE")
-    assets = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    return render_template('new_ticket.html', assets=assets)
-
-
-@app.route('/ticket/<int:id>')
-def view_ticket(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('tickets'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        cur.execute("""
-            SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
-            FROM tickets t
-            LEFT JOIN assets a ON t.asset_id = a.id
-            WHERE t.id = %s
-        """, (id,))
-        ticket = cur.fetchone()
-        
-        if not ticket:
-            flash("Ticket not found.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('tickets'))
-        
-        if session.get('role') != 'Admin' and ticket['created_by'] != session.get('email') and ticket['assigned_to'] != session.get('full_name'):
-            flash("You don't have permission to view this ticket.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('tickets'))
-        
-        cur.execute("SELECT * FROM ticket_comments WHERE ticket_id = %s ORDER BY created_at ASC", (id,))
-        comments = cur.fetchall()
-        
-        cur.close()
-        conn.close()
-        
-        return render_template('ticket_detail.html', ticket=ticket, comments=comments)
-    except Exception as e:
-        app.logger.error(f"View ticket error: {e}")
-        flash("An error occurred loading the ticket.")
-        return redirect(url_for('tickets'))
-
-
-@app.route('/ticket/<int:id>/comment', methods=['POST'])
-def add_ticket_comment(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        comment = request.form.get('comment', '').strip()
-        if not comment:
-            flash("Comment cannot be empty.")
-            return redirect(url_for('view_ticket', id=id))
-        
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('view_ticket', id=id))
-        cur = conn.cursor()
-        cur.execute("INSERT INTO ticket_comments (ticket_id, comment, user_email) VALUES (%s, %s, %s)",
-                   (id, comment, session.get('email')))
-        cur.execute("UPDATE tickets SET updated_at = %s WHERE id = %s", (datetime.now(), id))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        log_activity(session.get('email'), f"TICKET COMMENT ADDED: Ticket #{id}", None)
-        flash("Comment added successfully!")
-        return redirect(url_for('view_ticket', id=id))
-    except Exception as e:
-        app.logger.error(f"Add comment error: {e}")
-        flash("An error occurred adding the comment.")
-        return redirect(url_for('view_ticket', id=id))
-
-
-@app.route('/ticket/<int:id>/update_status', methods=['POST'])
-def update_ticket_status(id):
-    if 'user' not in session or session.get('role') != 'Admin':
-        flash("Only admins can update ticket status.")
-        return redirect(url_for('tickets'))
-    
-    try:
-        status = request.form.get('status')
-        valid_statuses = ['Open', 'In Progress', 'Resolved', 'Closed']
-        if status not in valid_statuses:
-            flash("Invalid status.")
-            return redirect(url_for('view_ticket', id=id))
-        
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('view_ticket', id=id))
-        cur = conn.cursor()
-        
-        if status == 'Closed':
-            cur.execute("UPDATE tickets SET status = %s, updated_at = %s, closed_at = %s WHERE id = %s",
-                       (status, datetime.now(), datetime.now(), id))
-        else:
-            cur.execute("UPDATE tickets SET status = %s, updated_at = %s WHERE id = %s",
-                       (status, datetime.now(), id))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        log_activity(session.get('email'), f"TICKET STATUS UPDATED TO {status}: Ticket #{id}", None)
-        flash(f"Ticket status updated to {status}!")
-        return redirect(url_for('view_ticket', id=id))
-    except Exception as e:
-        app.logger.error(f"Update ticket status error: {e}")
-        flash("An error occurred updating the ticket status.")
-        return redirect(url_for('view_ticket', id=id))
-
-
-@app.route('/ticket/<int:id>/assign', methods=['POST'])
-def assign_ticket(id):
-    if 'user' not in session or session.get('role') != 'Admin':
-        flash("Only admins can assign tickets.")
-        return redirect(url_for('tickets'))
-    
-    try:
-        assigned_to = request.form.get('assigned_to', '').strip()
-        if not assigned_to:
-            flash("Please enter a user name to assign this ticket.")
-            return redirect(url_for('view_ticket', id=id))
-        
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('view_ticket', id=id))
-        cur = conn.cursor()
-        cur.execute("UPDATE tickets SET assigned_to = %s, updated_at = %s WHERE id = %s",
-                   (assigned_to, datetime.now(), id))
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        log_activity(session.get('email'), f"TICKET ASSIGNED TO {assigned_to}: Ticket #{id}", None)
-        flash(f"Ticket assigned to {assigned_to}!")
-        return redirect(url_for('view_ticket', id=id))
-    except Exception as e:
-        app.logger.error(f"Assign ticket error: {e}")
-        flash("An error occurred assigning the ticket.")
-        return redirect(url_for('view_ticket', id=id))
 
 
 @app.route('/activity')
