@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>New Repair Request - JTDI Asset Tracker</title>
+    <title>Schedule Repair Appointment - JTDI Asset Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -45,6 +45,15 @@
         .login-link:hover {
             text-decoration: underline;
         }
+        .required-star {
+            color: #dc3545;
+        }
+        .info-box {
+            background: #e8f5e9;
+            border-left: 4px solid #28a745;
+            padding: 12px 15px;
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body>
@@ -53,8 +62,8 @@
             <div class="col-lg-8">
                 <div class="card">
                     <div class="card-header text-center py-3">
-                        <h4><i class="bi bi-tools me-2"></i>Submit Repair Request</h4>
-                        <p class="mb-0 opacity-75">Fill in the details below to submit a repair request</p>
+                        <h4><i class="bi bi-calendar-plus me-2"></i>Schedule Repair Appointment</h4>
+                        <p class="mb-0 opacity-75">Fill in the details below to schedule a repair appointment with JTDI</p>
                     </div>
                     <div class="card-body p-4">
                         {% with messages = get_flashed_messages() %}
@@ -71,54 +80,97 @@
                         <form method="POST" action="{{ url_for('new_repair_request') }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}"/>
 
-                            <div class="mb-3">
-                                <label for="requester_email" class="form-label">Your Email <span class="text-danger">*</span></label>
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                                    <input type="email" class="form-control" id="requester_email" name="requester_email" required placeholder="Enter your email address">
+                            <!-- Owner Information -->
+                            <h6 class="fw-bold mb-3"><i class="bi bi-person me-2"></i>Owner Information</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="owner_name" class="form-label">Full Name <span class="required-star">*</span></label>
+                                    <input type="text" class="form-control" id="owner_name" name="owner_name" required placeholder="Enter your full name">
                                 </div>
-                                <small class="text-muted">We'll use this to update you on your request status</small>
+                                <div class="col-md-6 mb-3">
+                                    <label for="requester_email" class="form-label">Email Address <span class="required-star">*</span></label>
+                                    <input type="email" class="form-control" id="requester_email" name="requester_email" required placeholder="Enter your email address">
+                                    <small class="text-muted">We'll use this to update you on your appointment status</small>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="phone_number" class="form-label">Phone Number</label>
+                                <input type="text" class="form-control" id="phone_number" name="phone_number" placeholder="Enter your phone number (optional)">
                             </div>
 
-                            <div class="mb-3">
-                                <label for="asset_id" class="form-label">Asset (Optional)</label>
-                                <select class="form-select" id="asset_id" name="asset_id">
-                                    <option value="">Select Asset (Optional)</option>
-                                    {% for asset in assets %}
-                                    <option value="{{ asset.id }}">{{ asset.tracking_number }} - {{ asset.cpu_name }} (S/N: {{ asset.serial_number }})</option>
-                                    {% endfor %}
-                                </select>
-                                <small class="text-muted">Select an asset if this request is for a specific asset</small>
+                            <hr>
+
+                            <!-- Asset Information -->
+                            <h6 class="fw-bold mb-3"><i class="bi bi-box me-2"></i>Asset Information</h6>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="asset_name" class="form-label">Asset Name/Model <span class="required-star">*</span></label>
+                                    <input type="text" class="form-control" id="asset_name" name="asset_name" required placeholder="e.g., Dell Latitude 3420, HP LaserJet">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="asset_serial" class="form-label">Serial Number <span class="required-star">*</span></label>
+                                    <input type="text" class="form-control" id="asset_serial" name="asset_serial" required placeholder="Enter the asset serial number">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="asset_type" class="form-label">Asset Type <span class="required-star">*</span></label>
+                                    <select class="form-select" id="asset_type" name="asset_type" required>
+                                        <option value="">Select Type</option>
+                                        <option value="Laptop">Laptop</option>
+                                        <option value="Desktop">Desktop</option>
+                                        <option value="Monitor">Monitor</option>
+                                        <option value="Printer">Printer</option>
+                                        <option value="Server">Server</option>
+                                        <option value="Network Equipment">Network Equipment</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="asset_brand" class="form-label">Brand</label>
+                                    <input type="text" class="form-control" id="asset_brand" name="asset_brand" placeholder="e.g., Dell, HP, Lenovo (optional)">
+                                </div>
                             </div>
 
+                            <hr>
+
+                            <!-- Issue & Appointment -->
+                            <h6 class="fw-bold mb-3"><i class="bi bi-tools me-2"></i>Issue & Appointment Details</h6>
                             <div class="mb-3">
-                                <label for="issue_description" class="form-label">Issue Description <span class="text-danger">*</span></label>
+                                <label for="issue_description" class="form-label">Issue Description <span class="required-star">*</span></label>
                                 <textarea class="form-control" id="issue_description" name="issue_description" rows="4" required placeholder="Describe the issue in detail..."></textarea>
                             </div>
 
-                            <div class="mb-3">
-                                <label for="priority" class="form-label">Priority</label>
-                                <select class="form-select" id="priority" name="priority">
-                                    <option value="Low">Low</option>
-                                    <option value="Medium" selected>Medium</option>
-                                    <option value="High">High</option>
-                                </select>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="priority" class="form-label">Priority</label>
+                                    <select class="form-select" id="priority" name="priority">
+                                        <option value="Low">Low</option>
+                                        <option value="Medium" selected>Medium</option>
+                                        <option value="High">High</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="scheduled_send_date" class="form-label">Preferred Send Date <span class="required-star">*</span></label>
+                                    <input type="date" class="form-control" id="scheduled_send_date" name="scheduled_send_date" required>
+                                    <small class="text-muted">When would you like to send the asset to JTDI?</small>
+                                </div>
                             </div>
 
                             <div class="mb-3">
-                                <label for="scheduled_send_date" class="form-label">Scheduled Send Date (Optional)</label>
-                                <input type="date" class="form-control" id="scheduled_send_date" name="scheduled_send_date">
-                                <small class="text-muted">When do you plan to send this asset for repair?</small>
+                                <label for="additional_notes" class="form-label">Additional Notes</label>
+                                <textarea class="form-control" id="additional_notes" name="additional_notes" rows="2" placeholder="Any additional information (optional)"></textarea>
                             </div>
 
                             <div class="alert alert-info">
                                 <i class="bi bi-info-circle me-2"></i>
                                 <strong>How it works:</strong>
                                 <ol class="mb-0 mt-1">
-                                    <li>Submit this repair request</li>
-                                    <li>Admin will review and approve</li>
-                                    <li>You'll be notified when approved</li>
-                                    <li>You can track status using your email</li>
+                                    <li>Submit this appointment request</li>
+                                    <li>Admin will review and approve your appointment</li>
+                                    <li>You'll receive confirmation via email</li>
+                                    <li>Bring/send your asset on the scheduled date</li>
+                                    <li>Track your appointment status using your email</li>
                                 </ol>
                             </div>
 
@@ -127,7 +179,7 @@
                                     <i class="bi bi-arrow-left me-1"></i>Back to Login
                                 </a>
                                 <button type="submit" class="btn btn-warning">
-                                    <i class="bi bi-send me-1"></i>Submit Repair Request
+                                    <i class="bi bi-calendar-check me-1"></i>Schedule Appointment
                                 </button>
                             </div>
                         </form>
@@ -136,7 +188,7 @@
                         <div class="text-center">
                             <small>Already have an account? <a href="{{ url_for('login') }}" class="login-link">Login here</a></small>
                             <br>
-                            <small>Want to track your request? <a href="{{ url_for('repair_requests_track') }}" class="login-link">Track by email</a></small>
+                            <small>Want to track your appointment? <a href="{{ url_for('repair_requests_track') }}" class="login-link">Track by email</a></small>
                         </div>
                     </div>
                 </div>
@@ -144,6 +196,17 @@
         </div>
     </div>
 
+    <script>
+        // Set minimum date to today
+        document.addEventListener('DOMContentLoaded', function() {
+            const dateInput = document.getElementById('scheduled_send_date');
+            if (dateInput) {
+                const today = new Date().toISOString().split('T')[0];
+                dateInput.setAttribute('min', today);
+                dateInput.value = today;
+            }
+        });
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
