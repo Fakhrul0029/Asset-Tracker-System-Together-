@@ -16,6 +16,7 @@
         body.dark-mode .activity-item { background: #1e1e3f; border-left-color: var(--gold); }
         body.dark-mode .text-muted { color: #999 !important; }
         body.dark-mode .text-dark { color: var(--dark-text) !important; }
+        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -54,6 +55,15 @@
             background: #2a2a4a;
             color: #ddd;
         }
+        .bg-purple { background-color: #6f42c1; color: white; }
+        .date-filter-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        body.dark-mode .date-filter-card {
+            background: #1e1e3f;
+        }
     </style>
 </head>
 <body>
@@ -76,6 +86,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -124,10 +137,35 @@
             </div>
         </div>
 
+        <!-- Date Filter -->
+        <div class="card p-3 mb-4 shadow-sm border-0 rounded-4">
+            <form method="GET" action="/dashboard" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted">Date Filter</label>
+                    <select name="date_filter" class="form-select">
+                        <option value="all" {% if date_filter == 'all' %}selected{% endif %}>All Time</option>
+                        <option value="monthly" {% if date_filter == 'monthly' %}selected{% endif %}>This Month</option>
+                        <option value="custom" {% if date_filter == 'custom' %}selected{% endif %}>Custom Range</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted">Start Date</label>
+                    <input type="date" name="start_date" class="form-control" value="{{ start_date or '' }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted">End Date</label>
+                    <input type="date" name="end_date" class="form-control" value="{{ end_date or '' }}">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filters me-1"></i>Apply Filter</button>
+                </div>
+            </form>
+        </div>
+
         <!-- Statistics Cards -->
         <div class="row g-4 mb-4">
             <div class="col-md-3">
-                <div class="card stat-card p-3 bg-primary" onclick="window.location.href='/'">
+                <div class="card stat-card p-4 bg-primary" onclick="window.location.href='/'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
@@ -138,61 +176,35 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-3 bg-success" onclick="window.location.href='/?status=Working'">
+                <div class="card stat-card p-4 bg-success" onclick="window.location.href='/?status=Available'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Working</h6>
-                            <h2 class="mb-0">{{ working }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Available</h6>
+                            <h2 class="mb-0">{{ available }}</h2>
                         </div>
                         <i class="bi bi-check-circle fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-3 bg-warning text-dark" onclick="window.location.href='/?status=Maintenance'">
+                <div class="card stat-card p-4 bg-primary" onclick="window.location.href='/?status=Assigned'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Maintenance</h6>
-                            <h2 class="mb-0">{{ maint }}</h2>
-                        </div>
-                        <i class="bi bi-tools fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stat-card p-3 bg-danger" onclick="window.location.href='/?status=Faulty'">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Faulty</h6>
-                            <h2 class="mb-0">{{ faulty }}</h2>
-                        </div>
-                        <i class="bi bi-exclamation-triangle fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Assignment Status -->
-        <div class="row g-4 mb-4">
-            <div class="col-md-6">
-                <div class="card stat-card p-3 bg-info" onclick="window.location.href='/?assigned=yes'">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Assigned Assets</h6>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Assigned</h6>
                             <h2 class="mb-0">{{ assigned }}</h2>
                         </div>
                         <i class="bi bi-person-check fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
-            <div class="col-md-6">
-                <div class="card stat-card p-3 bg-secondary" onclick="window.location.href='/?assigned=no'">
+            <div class="col-md-3">
+                <div class="card stat-card p-4 bg-warning text-dark" onclick="window.location.href='/?status=In Repair'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Available Assets</h6>
-                            <h2 class="mb-0">{{ total - assigned }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">In Repair</h6>
+                            <h2 class="mb-0">{{ in_repair }}</h2>
                         </div>
-                        <i class="bi bi-inbox fs-1 opacity-50"></i>
+                        <i class="bi bi-tools fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
@@ -387,7 +399,7 @@
                     labels: statusLabels,
                     datasets: [{ 
                         data: statusData, 
-                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d', '#fd7e14'],
+                        backgroundColor: ['#28a745', '#0d6efd', '#6f42c1', '#ffc107', '#fd7e14', '#dc3545'],
                         borderWidth: 0,
                         hoverOffset: 10
                     }]
