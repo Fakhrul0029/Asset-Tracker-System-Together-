@@ -606,8 +606,7 @@ def repair_requests():
 
 @app.route('/repair_request/new', methods=['GET', 'POST'])
 def new_repair_request():
-    if 'user' not in session:
-        return redirect(url_for('login'))
+    # Allow public access - no login required
     
     if request.method == 'POST':
         try:
@@ -615,19 +614,27 @@ def new_repair_request():
             issue_description = request.form.get('issue_description')
             priority = request.form.get('priority', 'Medium')
             scheduled_send_date = request.form.get('scheduled_send_date')
+            requester_email = request.form.get('requester_email', '').strip()
             
             if not issue_description:
                 flash("Issue description is required.")
                 return redirect(url_for('new_repair_request'))
             
+            if not requester_email:
+                flash("Your email is required.")
+                return redirect(url_for('new_repair_request'))
+            
             conn = get_db_connection()
             if not conn:
                 flash("Database connection error.")
-                return redirect(url_for('repair_requests'))
+                return redirect(url_for('new_repair_request'))
             cur = conn.cursor()
             
             # Generate request number
             request_number = f"REQ-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+            
+            # Use requester_email as created_by
+            created_by = requester_email
             
             cur.execute("""
                 INSERT INTO repair_requests (
@@ -641,26 +648,27 @@ def new_repair_request():
                 issue_description, 
                 priority, 
                 scheduled_send_date if scheduled_send_date else None,
-                session.get('email')
+                created_by
             ))
             
             conn.commit()
             cur.close()
             conn.close()
             
-            log_activity(session.get('email'), f"REPAIR REQUEST CREATED: {request_number}", None)
-            flash(f"Repair request {request_number} created successfully! Waiting for admin approval.")
-            return redirect(url_for('repair_requests'))
+            if 'user' in session:
+                log_activity(session.get('email'), f"REPAIR REQUEST CREATED: {request_number}", None)
+            flash(f"Repair request {request_number} created successfully! You will be notified when it's approved.")
+            return redirect(url_for('repair_requests_track'))
         except Exception as e:
             app.logger.error(f"New repair request error: {e}")
             flash("An error occurred creating the repair request.")
-            return redirect(url_for('repair_requests'))
+            return redirect(url_for('new_repair_request'))
     
     # GET request - show form
     conn = get_db_connection()
     if not conn:
         flash("Database connection error.")
-        return redirect(url_for('repair_requests'))
+        return redirect(url_for('login'))
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT id, tracking_number, cpu_name, serial_number FROM assets WHERE is_deleted = FALSE")
     assets = cur.fetchall()
@@ -719,6 +727,33 @@ def view_repair_request(id):
         app.logger.error(f"View repair request error: {e}")
         flash("An error occurred loading the repair request.")
         return redirect(url_for('repair_requests'))
+
+
+@app.route('/repair_requests/track')
+def repair_requests_track():
+    """Public tracking page for repair requests"""
+    email = request.args.get('email', '').strip()
+    requests = []
+    
+    if email:
+        try:
+            conn = get_db_connection()
+            if conn:
+                cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                cur.execute("""
+                    SELECT r.*, a.tracking_number, a.cpu_name as asset_name
+                    FROM repair_requests r
+                    LEFT JOIN assets a ON r.asset_id = a.id
+                    WHERE r.created_by = %s
+                    ORDER BY r.created_at DESC
+                """, (email,))
+                requests = cur.fetchall()
+                cur.close()
+                conn.close()
+        except Exception as e:
+            app.logger.error(f"Track repair requests error: {e}")
+    
+    return render_template('repair_requests_track.html', requests=requests, email=email)
 
 
 @app.route('/repair_request/<int:id>/comment', methods=['POST'])
@@ -1428,12 +1463,35 @@ def activity():
             flash("Database connection error.")
             return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        # Get activity logs
         cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
         logs = cur.fetchall()
+        
+        # Get repair requests for the current user or all if admin
+        if is_admin():
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                ORDER BY r.created_at DESC
+                LIMIT 20
+            """)
+        else:
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                WHERE r.created_by = %s
+                ORDER BY r.created_at DESC
+                LIMIT 20
+            """, (session.get('email'),))
+        
+        requests = cur.fetchall()
         cur.close()
         conn.close()
 
-        return render_template('activity.html', logs=logs)
+        return render_template('activity.html', logs=logs, requests=requests)
     except Exception as e:
         app.logger.error(f"Activity error: {e}")
         flash("An error occurred loading activity logs.")
