@@ -1990,4 +1990,5 @@ def backup_database():
 
 
 if __name__ == "__main__":
+    #For local deployment only
     app.run(host="0.0.0.0", port=5000)
