@@ -96,6 +96,18 @@
         .maintenance-count-high { background-color: #dc3545; color: white; }
         .maintenance-count-medium { background-color: #ffc107; color: #212529; }
         .maintenance-count-low { background-color: #28a745; color: white; }
+        .repair-badge {
+            background-color: #ffc107;
+            color: #212529;
+            font-size: 0.6rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        body.dark-mode .repair-badge {
+            background-color: #ffc107;
+            color: #212529;
+        }
     </style>
 </head>
 <body>
@@ -301,6 +313,11 @@
                                 {% if row.is_deleted %}
                                     <br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">ARCHIVED</span>
                                 {% endif %}
+                                {% if 'Repair request approved' in row.description %}
+                                    <br><span class="badge repair-badge mt-1">
+                                        <i class="bi bi-tools me-1"></i>From Repair Request
+                                    </span>
+                                {% endif %}
                             </td>
                             <td>
                                 <div class="fw-bold">{{ row.cpu_name or 'N/A' }}</div>
@@ -433,6 +450,11 @@
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle me-2"></i>
                             <strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})
+                            {% if 'Repair request approved' in row.description %}
+                                <br><span class="badge repair-badge mt-1">
+                                    <i class="bi bi-tools me-1"></i>From Repair Request
+                                </span>
+                            {% endif %}
                         </div>
                         <form action="/assign/{{ row.id }}" method="POST" id="assignForm{{ row.id }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
