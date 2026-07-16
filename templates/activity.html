@@ -28,6 +28,41 @@
         .user-badge { background: rgba(255,193,7,0.15); color: var(--gold); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
         .card { border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-radius: 12px; }
         .card-header { background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%); color: white; border-radius: 12px 12px 0 0 !important; font-weight: 600; }
+        .request-card {
+            border-left: 4px solid var(--navy);
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .request-card:hover {
+            background: #f0f0f0;
+        }
+        body.dark-mode .request-card {
+            background: #1e1e3f;
+            border-left-color: var(--gold);
+        }
+        body.dark-mode .request-card:hover {
+            background: #2a2a4a;
+        }
+        .status-pending { border-left-color: #ffc107 !important; }
+        .status-approved { border-left-color: #28a745 !important; }
+        .status-sent { border-left-color: #0d6efd !important; }
+        .status-completed { border-left-color: #6f42c1 !important; }
+        .status-rejected { border-left-color: #dc3545 !important; }
+        .badge-pending { background-color: #ffc107; color: #212529; }
+        .badge-approved { background-color: #28a745; color: white; }
+        .badge-sent { background-color: #0d6efd; color: white; }
+        .badge-completed { background-color: #6f42c1; color: white; }
+        .badge-rejected { background-color: #dc3545; color: white; }
+        .request-timestamp {
+            font-size: 0.75rem;
+            color: #6c757d;
+        }
+        body.dark-mode .request-timestamp {
+            color: #999;
+        }
     </style>
 </head>
 <body>
@@ -49,6 +84,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link active" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a>
                     </li>
                     {% if session.role == 'Admin' %}
                     <li class="nav-item dropdown">
@@ -75,6 +113,71 @@
     </nav>
 
     <div class="container py-4">
+        <!-- Repair Request Section -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-tools me-2"></i>Repair Requests</span>
+                <a href="/repair_request/new" class="btn btn-warning btn-sm">
+                    <i class="bi bi-plus-circle me-1"></i>New Repair Request
+                </a>
+            </div>
+            <div class="card-body">
+                {% if requests %}
+                    <div class="row">
+                        {% for req in requests %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="request-card status-{{ req.status|lower }}">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>{{ req.request_number }}</strong>
+                                        <span class="badge badge-{{ req.status|lower }} ms-1">{{ req.status }}</span>
+                                    </div>
+                                    <span class="request-timestamp">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '' }}</span>
+                                </div>
+                                <div class="mt-1">
+                                    <small class="text-muted">
+                                        {% if req.asset_name %}
+                                            <i class="bi bi-box me-1"></i>{{ req.asset_name }}
+                                        {% else %}
+                                            <i class="bi bi-box me-1"></i>No Asset
+                                        {% endif %}
+                                    </small>
+                                </div>
+                                <div class="mt-1">
+                                    <small class="text-muted">{{ req.issue_description[:100] }}{% if req.issue_description|length > 100 %}...{% endif %}</small>
+                                </div>
+                                <div class="mt-2 d-flex justify-content-between align-items-center">
+                                    <small class="text-muted">
+                                        <i class="bi bi-person me-1"></i>{{ req.created_by }}
+                                    </small>
+                                    {% if req.scheduled_send_date %}
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar me-1"></i>Send: {{ req.scheduled_send_date.strftime('%Y-%m-%d') if req.scheduled_send_date else '' }}
+                                        </small>
+                                    {% endif %}
+                                </div>
+                                <div class="mt-2">
+                                    <a href="/repair_request/{{ req.id }}" class="btn btn-sm btn-outline-primary w-100">
+                                        <i class="bi bi-eye me-1"></i>View Details
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-inbox fs-1"></i>
+                        <p class="mt-2">No repair requests yet.</p>
+                        <a href="/repair_request/new" class="btn btn-warning btn-sm">
+                            <i class="bi bi-plus-circle me-1"></i>Create Your First Repair Request
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Activity Logs Section -->
         <div class="card">
             <div class="card-header">
                 <i class="bi bi-clock-history me-2"></i>Activity Logs
