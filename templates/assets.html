@@ -313,7 +313,7 @@
                                 {% if row.is_deleted %}
                                     <br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">ARCHIVED</span>
                                 {% endif %}
-                                {% if 'Repair request approved' in row.description %}
+                                {% if row.tracking_number.startswith('REP-') %}
                                     <br><span class="badge repair-badge mt-1">
                                         <i class="bi bi-tools me-1"></i>From Repair Request
                                     </span>
@@ -450,7 +450,7 @@
                         <div class="alert alert-info">
                             <i class="bi bi-info-circle me-2"></i>
                             <strong>Asset:</strong> {{ row.cpu_name }} ({{ row.tracking_number }})
-                            {% if 'Repair request approved' in row.description %}
+                            {% if row.tracking_number.startswith('REP-') %}
                                 <br><span class="badge repair-badge mt-1">
                                     <i class="bi bi-tools me-1"></i>From Repair Request
                                 </span>
