@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Repair Request - JTDI Asset Tracker</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a2a6c 0%, #203a43 50%, #2c5364 100%);
+            min-height: 100vh;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%);
+            color: white;
+            border-radius: 16px 16px 0 0 !important;
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            border: none;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            opacity: 0.9;
+            color: #212529;
+        }
+        .btn-outline-secondary:hover {
+            color: white;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: #1a2a6c;
+            box-shadow: 0 0 0 0.2rem rgba(26, 42, 108, 0.25);
+        }
+        .login-link {
+            color: #1a2a6c;
+            text-decoration: none;
+        }
+        .login-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-header text-center py-3">
+                        <h4><i class="bi bi-tools me-2"></i>Submit Repair Request</h4>
+                        <p class="mb-0 opacity-75">Fill in the details below to submit a repair request</p>
+                    </div>
+                    <div class="card-body p-4">
+                        {% with messages = get_flashed_messages() %}
+                            {% if messages %}
+                                {% for message in messages %}
+                                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form method="POST" action="{{ url_for('new_repair_request') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}"/>
+
+                            <div class="mb-3">
+                                <label for="requester_email" class="form-label">Your Email <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-envelope"></i></span>
+                                    <input type="email" class="form-control" id="requester_email" name="requester_email" required placeholder="Enter your email address">
+                                </div>
+                                <small class="text-muted">We'll use this to update you on your request status</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="asset_id" class="form-label">Asset (Optional)</label>
+                                <select class="form-select" id="asset_id" name="asset_id">
+                                    <option value="">Select Asset (Optional)</option>
+                                    {% for asset in assets %}
+                                    <option value="{{ asset.id }}">{{ asset.tracking_number }} - {{ asset.cpu_name }} (S/N: {{ asset.serial_number }})</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Select an asset if this request is for a specific asset</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="issue_description" class="form-label">Issue Description <span class="text-danger">*</span></label>
+                                <textarea class="form-control" id="issue_description" name="issue_description" rows="4" required placeholder="Describe the issue in detail..."></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="priority" class="form-label">Priority</label>
+                                <select class="form-select" id="priority" name="priority">
+                                    <option value="Low">Low</option>
+                                    <option value="Medium" selected>Medium</option>
+                                    <option value="High">High</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="scheduled_send_date" class="form-label">Scheduled Send Date (Optional)</label>
+                                <input type="date" class="form-control" id="scheduled_send_date" name="scheduled_send_date">
+                                <small class="text-muted">When do you plan to send this asset for repair?</small>
+                            </div>
+
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                <strong>How it works:</strong>
+                                <ol class="mb-0 mt-1">
+                                    <li>Submit this repair request</li>
+                                    <li>Admin will review and approve</li>
+                                    <li>You'll be notified when approved</li>
+                                    <li>You can track status using your email</li>
+                                </ol>
+                            </div>
+
+                            <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                                <a href="{{ url_for('login') }}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-arrow-left me-1"></i>Back to Login
+                                </a>
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="bi bi-send me-1"></i>Submit Repair Request
+                                </button>
+                            </div>
+                        </form>
+
+                        <hr class="mt-4">
+                        <div class="text-center">
+                            <small>Already have an account? <a href="{{ url_for('login') }}" class="login-link">Login here</a></small>
+                            <br>
+                            <small>Want to track your request? <a href="{{ url_for('repair_requests_track') }}" class="login-link">Track by email</a></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
