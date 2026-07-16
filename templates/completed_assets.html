@@ -13,6 +13,7 @@
         body.dark-mode .navbar { background: linear-gradient(90deg, #0f0f23 0%, #1a1a2e 100%) !important; }
         body.dark-mode .card { background-color: var(--dark-card); color: var(--dark-text); border-color: #3a3a5c; }
         body.dark-mode .text-muted { color: #999 !important; }
+        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -43,6 +44,17 @@
             background: #1a3a1a;
             color: #81c784;
         }
+        .bg-purple { background-color: #6f42c1; color: white; }
+        .timestamp-text { font-size: 0.85rem; color: #6c757d; }
+        body.dark-mode .timestamp-text { color: #999; }
+        .date-filter-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+        }
+        body.dark-mode .date-filter-card {
+            background: #1e1e3f;
+        }
     </style>
 </head>
 <body>
@@ -59,6 +71,7 @@
                     <li class="nav-item"><a class="nav-link" href="/dashboard"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="/"><i class="bi bi-list-check me-1"></i>Assets</a></li>
                     <li class="nav-item"><a class="nav-link active" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a></li>
                     <li class="nav-item"><a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a></li>
                     {% if session.role == 'Admin' %}
                     <li class="nav-item dropdown">
@@ -102,6 +115,23 @@
             </div>
         </div>
 
+        <!-- Date Range Filter -->
+        <div class="card p-3 mb-4 shadow-sm border-0 rounded-4">
+            <form method="GET" action="/completed_assets" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ date_to or '' }}">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-filters me-1"></i>Apply Filter</button>
+                </div>
+            </form>
+        </div>
+
         {% if assets %}
             <div class="row">
                 {% for asset in assets %}
@@ -118,13 +148,24 @@
                             <div class="row small">
                                 <div class="col-6"><strong>Type:</strong><br>{{ asset.asset_type or '-' }}</div>
                                 <div class="col-6"><strong>Department:</strong><br>{{ asset.location or '-' }}</div>
-                                <div class="col-6 mt-2"><strong>Status:</strong><br>
-                                    <span class="badge bg-success">{{ asset.status }}</span>
+                                <div class="col-6 mt-2">
+                                    <strong>Status:</strong><br>
+                                    <span class="badge 
+                                        {% if asset.status == 'Available' %}bg-success
+                                        {% elif asset.status == 'Assigned' %}bg-primary
+                                        {% elif asset.status == 'Completed' %}bg-purple
+                                        {% elif asset.status == 'In Repair' %}bg-warning text-dark
+                                        {% elif asset.status == 'Waiting Parts' %}bg-warning text-dark
+                                        {% elif asset.status == 'Beyond Repair' %}bg-danger
+                                        {% else %}bg-secondary{% endif %} 
+                                    ">
+                                        {{ asset.status }}
+                                    </span>
                                 </div>
                                 <div class="col-6 mt-2"><strong>Owner:</strong><br>{{ asset.owner_name or '-' }}</div>
                                 <div class="col-12 mt-2">
                                     <strong>Completed Date:</strong><br>
-                                    <span class="completed-date">{{ asset.completed_date.strftime('%Y-%m-%d %H:%M') if asset.completed_date else asset.checkout_date.strftime('%Y-%m-%d') if asset.checkout_date else '-' }}</span>
+                                    <span class="timestamp-text">{{ asset.completed_date.strftime('%Y-%m-%d %H:%M') if asset.completed_date else asset.checkout_date.strftime('%Y-%m-%d %H:%M') if asset.checkout_date else '-' }}</span>
                                 </div>
                                 {% if session.role == 'Admin' %}
                                 <div class="col-12 mt-2">
