@@ -95,6 +95,22 @@
         body.dark-mode .log-user {
             color: #999;
         }
+        .ticket-item {
+            border-left: 3px solid #17a2b8;
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+        body.dark-mode .ticket-item {
+            background: #1e1e3f;
+        }
+        .maintenance-count-badge {
+            font-size: 1.2rem;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 30px;
+        }
     </style>
 </head>
 <body>
@@ -116,6 +132,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -252,13 +271,28 @@
                                 <span class="info-label">Scan Count:</span>
                                 <p>{{ asset.scan_count or 0 }}</p>
                             </div>
-                            {% if asset.completed_date %}
+                            <div class="col-md-6 mb-3">
+                                <span class="info-label">Maintenance Cases:</span>
+                                <p>
+                                    <span class="badge {% if maintenance_count > 5 %}bg-danger{% elif maintenance_count > 2 %}bg-warning text-dark{% else %}bg-success{% endif %} maintenance-count-badge">
+                                        {{ maintenance_count }}
+                                    </span>
+                                    {% if maintenance_count > 5 %}
+                                    <span class="text-danger small ms-1">⚠️ High maintenance</span>
+                                    {% elif maintenance_count > 2 %}
+                                    <span class="text-warning small ms-1">⚠️ Moderate maintenance</span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                        {% if asset.completed_date %}
+                        <div class="row">
                             <div class="col-md-6 mb-3">
                                 <span class="info-label">Completed Date:</span>
                                 <p class="timestamp-text">{{ asset.completed_date.strftime('%Y-%m-%d %H:%M') if asset.completed_date else '-' }}</p>
                             </div>
-                            {% endif %}
                         </div>
+                        {% endif %}
                         <div class="mb-3">
                             <span class="info-label">Description:</span>
                             <p>{{ asset.description or '-' }}</p>
@@ -275,14 +309,18 @@
                         <a href="{{ url_for('index') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left me-1"></i>Back to Assets
                         </a>
+                        <a href="/ticket/new?asset_id={{ asset.id }}" class="btn btn-outline-info">
+                            <i class="bi bi-ticket me-1"></i>Create Ticket
+                        </a>
                     </div>
                 </div>
             </div>
 
             <div class="col-lg-4">
+                <!-- Maintenance History -->
                 <div class="card mb-4">
                     <div class="card-header">
-                        <i class="bi bi-clock-history me-2"></i>Maintenance History
+                        <i class="bi bi-clock-history me-2"></i>Maintenance History ({{ logs|length }})
                     </div>
                     <div class="card-body">
                         {% if logs %}
@@ -314,8 +352,41 @@
                     </div>
                 </div>
 
+                <!-- Tickets Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-ticket me-2"></i>Related Tickets ({{ tickets|length }})
+                    </div>
+                    <div class="card-body">
+                        {% if tickets %}
+                            {% for ticket in tickets %}
+                            <div class="ticket-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <a href="/ticket/{{ ticket.id }}" class="fw-bold">{{ ticket.ticket_number }}</a>
+                                    <span class="badge 
+                                        {% if ticket.status == 'Open' %}bg-success
+                                        {% elif ticket.status == 'In Progress' %}bg-warning text-dark
+                                        {% elif ticket.status == 'Resolved' %}bg-info
+                                        {% else %}bg-secondary{% endif %} 
+                                    ">
+                                        {{ ticket.status }}
+                                    </span>
+                                </div>
+                                <small class="text-muted">{{ ticket.subject }}</small>
+                                <br><small class="text-muted">{{ ticket.created_at.strftime('%Y-%m-%d') if ticket.created_at else '' }}</small>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <p class="text-muted text-center py-2">No tickets for this asset.</p>
+                        {% endif %}
+                        <a href="/ticket/new?asset_id={{ asset.id }}" class="btn btn-sm btn-outline-primary w-100">
+                            <i class="bi bi-plus-circle me-1"></i>Create Ticket
+                        </a>
+                    </div>
+                </div>
+
                 {% if asset.status == 'Waiting Parts' %}
-                <div class="card border-warning">
+                <div class="card border-warning mt-4">
                     <div class="card-header bg-warning text-dark">
                         <i class="bi bi-tools me-2"></i>Parts Request
                     </div>
