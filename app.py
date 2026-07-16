@@ -877,20 +877,21 @@ def approve_repair_request(id):
         cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
         existing_asset = cur.fetchone()
         
+        tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+        
         if existing_asset:
-            # Asset already exists, just update the status
+            # Asset already exists, update it with REP tracking number
             cur.execute("""
                 UPDATE assets SET 
                     status = 'Available',
+                    tracking_number = %s,
                     description = %s,
                     owner_name = %s
                 WHERE serial_number = %s
-            """, (f"Repair request approved. Issue: {issue}", owner_name, asset_serial))
+            """, (tracking_number, f"Repair request approved. Issue: {issue}", owner_name, asset_serial))
             asset_created = False
         else:
             # Create new asset from the repair request
-            tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
-            
             cur.execute("""
                 INSERT INTO assets (
                     asset_type, tracking_number, cpu_name, serial_number,
@@ -916,20 +917,21 @@ def approve_repair_request(id):
             SET status = 'Approved', 
                 approved_by = %s, 
                 approved_date = %s,
-                updated_at = %s
+                updated_at = %s,
+                asset_id = (SELECT id FROM assets WHERE serial_number = %s)
             WHERE id = %s
-        """, (session.get('full_name'), datetime.now(), datetime.now(), id))
+        """, (session.get('full_name'), datetime.now(), datetime.now(), asset_serial, id))
         
         conn.commit()
         cur.close()
         conn.close()
         
         if asset_created:
-            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED AND ASSET CREATED: {asset_serial}", asset_serial)
-            flash(f"Repair request approved! Asset {asset_serial} has been created and is now available in the asset list.")
+            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED AND ASSET CREATED: {asset_serial} ({tracking_number})", asset_serial)
+            flash(f"Repair request approved! Asset {asset_serial} (Tracking: {tracking_number}) has been created and is now available in the asset list.")
         else:
-            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Asset {asset_serial} updated", asset_serial)
-            flash(f"Repair request approved! Asset {asset_serial} already exists and has been updated.")
+            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Asset {asset_serial} updated with {tracking_number}", asset_serial)
+            flash(f"Repair request approved! Asset {asset_serial} already exists and has been updated with tracking number {tracking_number}.")
         
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
