@@ -321,7 +321,9 @@ def index():
         conn = get_db_connection()
         if not conn:
             flash("Database connection error.")
-            return render_template('assets.html', data=[], total=0, available=0, assigned=0, in_repair=0)
+            return render_template('assets.html', data=[], total=0, available=0, assigned=0, in_repair=0,
+                                 s_query='', c_filter='', sort='id', order='desc', page=1, 
+                                 total_pages=0, per_page=20, users=[], serial_search='', date_from='', date_to='')
         
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
@@ -415,7 +417,24 @@ def index():
         app.logger.error(f"Index error: {e}")
         traceback.print_exc()
         flash("An error occurred loading assets.")
-        return redirect(url_for('dashboard'))
+        # Return the template with empty data instead of redirecting
+        return render_template('assets.html', 
+                             data=[], 
+                             total=0, 
+                             available=0, 
+                             assigned=0, 
+                             in_repair=0,
+                             s_query='', 
+                             c_filter='',
+                             sort='id', 
+                             order='desc', 
+                             page=1, 
+                             total_pages=0, 
+                             per_page=20, 
+                             users=[], 
+                             serial_search='', 
+                             date_from='', 
+                             date_to='')
 
 
 @app.route('/dashboard')
@@ -427,7 +446,10 @@ def dashboard():
         conn = get_db_connection()
         if not conn:
             flash("Database connection error.")
-            return render_template('dashboard.html', total=0, available=0, assigned=0, in_repair=0)
+            return render_template('dashboard.html', total=0, available=0, assigned=0, in_repair=0,
+                                 recent_activity=[], type_labels=[], type_data=[],
+                                 location_labels=[], location_data=[], status_labels=[], status_data=[],
+                                 date_filter='all', start_date='', end_date='')
         
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
