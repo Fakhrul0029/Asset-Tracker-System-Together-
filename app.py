@@ -831,7 +831,86 @@ def approve_repair_request(id):
         if not conn:
             flash("Database connection error.")
             return redirect(url_for('repair_requests'))
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        # Get the repair request details
+        cur.execute("SELECT * FROM repair_requests WHERE id = %s", (id,))
+        request_data = cur.fetchone()
+        
+        if not request_data:
+            flash("Repair request not found.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('repair_requests'))
+        
+        # Parse the issue_description to extract asset details
+        description = request_data['issue_description']
+        
+        # Extract asset details from the description
+        asset_name = 'N/A'
+        asset_serial = 'N/A'
+        asset_type = 'N/A'
+        asset_brand = 'N/A'
+        owner_name = 'N/A'
+        phone_number = 'N/A'
+        issue = description
+        
+        # Parse the description
+        lines = description.split('\n') if description else []
+        for line in lines:
+            if line.startswith('Asset:'):
+                asset_name = line.replace('Asset:', '').strip()
+            elif line.startswith('Brand:'):
+                asset_brand = line.replace('Brand:', '').strip()
+            elif line.startswith('Type:'):
+                asset_type = line.replace('Type:', '').strip()
+            elif line.startswith('Serial Number:'):
+                asset_serial = line.replace('Serial Number:', '').strip()
+            elif line.startswith('Owner:'):
+                owner_name = line.replace('Owner:', '').strip()
+            elif line.startswith('Phone:'):
+                phone_number = line.replace('Phone:', '').strip()
+            elif line.startswith('Issue:'):
+                issue = line.replace('Issue:', '').strip()
+        
+        # Check if asset already exists by serial number
+        cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
+        existing_asset = cur.fetchone()
+        
+        if existing_asset:
+            # Asset already exists, just update the status
+            cur.execute("""
+                UPDATE assets SET 
+                    status = 'Available',
+                    description = %s,
+                    owner_name = %s
+                WHERE serial_number = %s
+            """, (f"Repair request approved. Issue: {issue}", owner_name, asset_serial))
+            asset_created = False
+        else:
+            # Create new asset from the repair request
+            tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+            
+            cur.execute("""
+                INSERT INTO assets (
+                    asset_type, tracking_number, cpu_name, serial_number,
+                    ram_size, storage_type, status, location, description, 
+                    is_deleted, owner_name
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s)
+            """, (
+                asset_type,
+                tracking_number,
+                f"{asset_brand} {asset_name}" if asset_brand != 'N/A' else asset_name,
+                asset_serial,
+                'N/A',
+                'N/A',
+                'Pending Assignment',
+                f"Repair request approved. Owner: {owner_name}, Phone: {phone_number}, Issue: {issue}",
+                owner_name
+            ))
+            asset_created = True
+        
+        # Update the repair request status to Approved
         cur.execute("""
             UPDATE repair_requests 
             SET status = 'Approved', 
@@ -840,16 +919,22 @@ def approve_repair_request(id):
                 updated_at = %s
             WHERE id = %s
         """, (session.get('full_name'), datetime.now(), datetime.now(), id))
+        
         conn.commit()
         cur.close()
         conn.close()
         
-        log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Request #{id}", None)
-        flash("Repair request approved successfully!")
+        if asset_created:
+            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED AND ASSET CREATED: {asset_serial}", asset_serial)
+            flash(f"Repair request approved! Asset {asset_serial} has been created and is now available in the asset list.")
+        else:
+            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Asset {asset_serial} updated", asset_serial)
+            flash(f"Repair request approved! Asset {asset_serial} already exists and has been updated.")
+        
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
         app.logger.error(f"Approve repair request error: {e}")
-        flash("An error occurred approving the request.")
+        flash(f"An error occurred approving the request: {str(e)}")
         return redirect(url_for('view_repair_request', id=id))
 
 
