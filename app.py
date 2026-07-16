@@ -620,6 +620,7 @@ def new_repair_request():
             asset_serial = request.form.get('asset_serial', '').strip()
             asset_type = request.form.get('asset_type', '').strip()
             asset_brand = request.form.get('asset_brand', '').strip()
+            department = request.form.get('department', '').strip()
             
             # Issue & appointment
             issue_description = request.form.get('issue_description', '').strip()
@@ -648,6 +649,10 @@ def new_repair_request():
                 flash("Asset type is required.")
                 return redirect(url_for('new_repair_request'))
             
+            if not department:
+                flash("Department/Location is required.")
+                return redirect(url_for('new_repair_request'))
+            
             if not issue_description:
                 flash("Issue description is required.")
                 return redirect(url_for('new_repair_request'))
@@ -671,6 +676,7 @@ Asset: {asset_name}
 Brand: {asset_brand if asset_brand else 'N/A'}
 Type: {asset_type}
 Serial Number: {asset_serial}
+Department: {department}
 Owner: {owner_name}
 Phone: {phone_number if phone_number else 'N/A'}
 
@@ -853,6 +859,7 @@ def approve_repair_request(id):
         asset_brand = 'N/A'
         owner_name = 'N/A'
         phone_number = 'N/A'
+        department = 'N/A'
         issue = description
         
         # Parse the description
@@ -866,12 +873,18 @@ def approve_repair_request(id):
                 asset_type = line.replace('Type:', '').strip()
             elif line.startswith('Serial Number:'):
                 asset_serial = line.replace('Serial Number:', '').strip()
+            elif line.startswith('Department:'):
+                department = line.replace('Department:', '').strip()
             elif line.startswith('Owner:'):
                 owner_name = line.replace('Owner:', '').strip()
             elif line.startswith('Phone:'):
                 phone_number = line.replace('Phone:', '').strip()
             elif line.startswith('Issue:'):
                 issue = line.replace('Issue:', '').strip()
+        
+        # If no department found, use default
+        if department == 'N/A' or not department:
+            department = 'Pending Assignment'
         
         # Check if asset already exists by serial number
         cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
@@ -885,11 +898,13 @@ def approve_repair_request(id):
                 UPDATE assets SET 
                     status = 'Available',
                     tracking_number = %s,
+                    location = %s,
                     description = %s,
                     owner_name = %s
                 WHERE serial_number = %s
-            """, (tracking_number, f"Repair request approved. Issue: {issue}", owner_name, asset_serial))
+            """, (tracking_number, department, f"Repair request approved. Owner: {owner_name}, Issue: {issue}", owner_name, asset_serial))
             asset_created = False
+            asset_id = existing_asset['id']
         else:
             # Create new asset from the repair request
             cur.execute("""
@@ -898,6 +913,7 @@ def approve_repair_request(id):
                     ram_size, storage_type, status, location, description, 
                     is_deleted, owner_name
                 ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s)
+                RETURNING id
             """, (
                 asset_type,
                 tracking_number,
@@ -905,22 +921,23 @@ def approve_repair_request(id):
                 asset_serial,
                 'N/A',
                 'N/A',
-                'Pending Assignment',
+                department,
                 f"Repair request approved. Owner: {owner_name}, Phone: {phone_number}, Issue: {issue}",
                 owner_name
             ))
             asset_created = True
+            asset_id = cur.fetchone()[0]
         
-        # Update the repair request status to Approved
+        # Update the repair request status to Approved and link the asset
         cur.execute("""
             UPDATE repair_requests 
             SET status = 'Approved', 
                 approved_by = %s, 
                 approved_date = %s,
                 updated_at = %s,
-                asset_id = (SELECT id FROM assets WHERE serial_number = %s)
+                asset_id = %s
             WHERE id = %s
-        """, (session.get('full_name'), datetime.now(), datetime.now(), asset_serial, id))
+        """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
         
         conn.commit()
         cur.close()
