@@ -244,7 +244,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # Create repair_requests table (replacing tickets)
+        # Create repair_requests table
         cur.execute('''CREATE TABLE IF NOT EXISTS repair_requests (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER REFERENCES assets(id),
@@ -655,25 +655,29 @@ def new_repair_request():
             cur.close()
             conn.close()
             
-            if 'user' in session:
-                log_activity(session.get('email'), f"REPAIR REQUEST CREATED: {request_number}", None)
             flash(f"Repair request {request_number} created successfully! You will be notified when it's approved.")
             return redirect(url_for('repair_requests_track'))
         except Exception as e:
             app.logger.error(f"New repair request error: {e}")
-            flash("An error occurred creating the repair request.")
+            flash(f"An error occurred creating the repair request: {str(e)}")
             return redirect(url_for('new_repair_request'))
     
     # GET request - show form
     conn = get_db_connection()
     if not conn:
         flash("Database connection error.")
-        return redirect(url_for('login'))
+        return render_template('new_repair_request.html', assets=[])
+    
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute("SELECT id, tracking_number, cpu_name, serial_number FROM assets WHERE is_deleted = FALSE")
-    assets = cur.fetchall()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute("SELECT id, tracking_number, cpu_name, serial_number FROM assets WHERE is_deleted = FALSE")
+        assets = cur.fetchall()
+    except Exception as e:
+        app.logger.error(f"Error fetching assets: {e}")
+        assets = []
+    finally:
+        cur.close()
+        conn.close()
     
     return render_template('new_repair_request.html', assets=assets)
 
