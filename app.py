@@ -525,12 +525,26 @@ def index():
         cur.close()
         release_db_connection(conn)
 
-        return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
-                             sort=sort, order=order, page=page, total_pages=total_pages, 
-                             per_page=per_page, users=users, serial_search=serial_search,
-                             date_from=date_from, date_to=date_to)
+        return render_template('assets.html', 
+                             data=data, 
+                             total=stats['total'], 
+                             available=stats['available'], 
+                             assigned=stats['assigned'], 
+                             in_repair=stats['in_repair'],
+                             s_query=s, 
+                             c_filter=c,
+                             sort=sort, 
+                             order=order, 
+                             page=page, 
+                             total_pages=total_pages, 
+                             per_page=per_page, 
+                             users=users, 
+                             serial_search=serial_search,
+                             date_from=date_from, 
+                             date_to=date_to)
     except Exception as e:
         app.logger.error(f"Index error: {e}")
+        traceback.print_exc()
         flash("An error occurred loading assets.")
         return redirect(url_for('dashboard'))
 
