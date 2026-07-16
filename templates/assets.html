@@ -211,7 +211,7 @@
             <form method="GET" action="/" class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Search</label>
-                    <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, department..." value="{{ s_query }}">
+                    <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, department..." value="{{ s_query or '' }}">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small fw-bold text-muted">Serial Number</label>
@@ -221,22 +221,22 @@
                     <label class="form-label small fw-bold text-muted">Category</label>
                     <select name="category" class="form-select">
                         <option value="">All</option>
-                        <option value="Laptop" {{ 'selected' if c_filter == 'Laptop' }}>Laptop</option>
-                        <option value="Desktop" {{ 'selected' if c_filter == 'Desktop' }}>Desktop</option>
-                        <option value="Monitor" {{ 'selected' if c_filter == 'Monitor' }}>Monitor</option>
-                        <option value="Printer" {{ 'selected' if c_filter == 'Printer' }}>Printer</option>
-                        <option value="Server" {{ 'selected' if c_filter == 'Server' }}>Server</option>
+                        <option value="Laptop" {% if c_filter == 'Laptop' %}selected{% endif %}>Laptop</option>
+                        <option value="Desktop" {% if c_filter == 'Desktop' %}selected{% endif %}>Desktop</option>
+                        <option value="Monitor" {% if c_filter == 'Monitor' %}selected{% endif %}>Monitor</option>
+                        <option value="Printer" {% if c_filter == 'Printer' %}selected{% endif %}>Printer</option>
+                        <option value="Server" {% if c_filter == 'Server' %}selected{% endif %}>Server</option>
                     </select>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small fw-bold text-muted">Sort By</label>
                     <select name="sort" class="form-select">
-                        <option value="id" {{ 'selected' if sort == 'id' }}>ID</option>
-                        <option value="tracking_number" {{ 'selected' if sort == 'tracking_number' }}>Tracking</option>
-                        <option value="cpu_name" {{ 'selected' if sort == 'cpu_name' }}>Model</option>
-                        <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
-                        <option value="location" {{ 'selected' if sort == 'location' }}>Department</option>
-                        <option value="created_at" {{ 'selected' if sort == 'created_at' }}>Date Created</option>
+                        <option value="id" {% if sort == 'id' %}selected{% endif %}>ID</option>
+                        <option value="tracking_number" {% if sort == 'tracking_number' %}selected{% endif %}>Tracking</option>
+                        <option value="cpu_name" {% if sort == 'cpu_name' %}selected{% endif %}>Model</option>
+                        <option value="status" {% if sort == 'status' %}selected{% endif %}>Status</option>
+                        <option value="location" {% if sort == 'location' %}selected{% endif %}>Department</option>
+                        <option value="created_at" {% if sort == 'created_at' %}selected{% endif %}>Date Created</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -278,13 +278,13 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-4 py-3 sortable" onclick="window.location.href='/?sort=tracking_number&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                            <th class="ps-4 py-3 sortable" onclick="window.location.href='/?sort=tracking_number&order={% if order == 'desc' %}asc{% else %}desc{% endif %}&search={{ s_query }}&category={{ c_filter }}'">
                                 Tracking <i class="bi bi-arrow-down-up"></i>
                             </th>
-                            <th class="sortable" onclick="window.location.href='/?sort=cpu_name&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                            <th class="sortable" onclick="window.location.href='/?sort=cpu_name&order={% if order == 'desc' %}asc{% else %}desc{% endif %}&search={{ s_query }}&category={{ c_filter }}'">
                                 Details <i class="bi bi-arrow-down-up"></i>
                             </th>
-                            <th class="sortable" onclick="window.location.href='/?sort=status&order={{ 'asc' if order == 'desc' else 'desc' }}&search={{ s_query }}&category={{ c_filter }}'">
+                            <th class="sortable" onclick="window.location.href='/?sort=status&order={% if order == 'desc' %}asc{% else %}desc{% endif %}&search={{ s_query }}&category={{ c_filter }}'">
                                 Status <i class="bi bi-arrow-down-up"></i>
                             </th>
                             <th>Assigned To</th>
