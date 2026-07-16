@@ -88,6 +88,14 @@
         .badge-assigned { background-color: #198754; }
         .badge-available { background-color: #6c757d; }
         .bg-purple { background-color: #6f42c1; color: white; }
+        .maintenance-count-badge {
+            font-size: 0.8rem;
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+        .maintenance-count-high { background-color: #dc3545; color: white; }
+        .maintenance-count-medium { background-color: #ffc107; color: #212529; }
+        .maintenance-count-low { background-color: #28a745; color: white; }
     </style>
 </head>
 <body>
@@ -110,6 +118,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -198,11 +209,15 @@
 
         <div class="card p-4 mb-4 shadow-sm border-0 rounded-4">
             <form method="GET" action="/" class="row g-3 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label small fw-bold text-muted">Search</label>
                     <input type="text" name="search" class="form-control" placeholder="S/N, tracking, model, department..." value="{{ s_query }}">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold text-muted">Serial Number</label>
+                    <input type="text" name="serial_search" class="form-control" placeholder="Search by S/N..." value="{{ serial_search or '' }}">
+                </div>
+                <div class="col-md-2">
                     <label class="form-label small fw-bold text-muted">Category</label>
                     <select name="category" class="form-select">
                         <option value="">All</option>
@@ -221,6 +236,7 @@
                         <option value="cpu_name" {{ 'selected' if sort == 'cpu_name' }}>Model</option>
                         <option value="status" {{ 'selected' if sort == 'status' }}>Status</option>
                         <option value="location" {{ 'selected' if sort == 'location' }}>Department</option>
+                        <option value="created_at" {{ 'selected' if sort == 'created_at' }}>Date Created</option>
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -231,6 +247,20 @@
                     </div>
                 </div>
             </form>
+            <!-- Date Range Filter -->
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Date From</label>
+                    <input type="date" name="date_from" class="form-control" value="{{ date_from or '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted">Date To</label>
+                    <input type="date" name="date_to" class="form-control" value="{{ date_to or '' }}">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-outline-secondary w-100">Apply Date Range</button>
+                </div>
+            </div>
         </div>
 
         <div class="d-flex justify-content-between align-items-center mb-3 px-1 flex-wrap gap-2">
@@ -259,6 +289,7 @@
                             </th>
                             <th>Assigned To</th>
                             <th>Owner Name</th>
+                            <th class="text-center">Maintenance</th>
                             <th class="text-center">Actions</th>
                         </tr>
                     </thead>
@@ -275,6 +306,7 @@
                                 <div class="fw-bold">{{ row.cpu_name or 'N/A' }}</div>
                                 <small class="text-muted">S/N: {{ row.serial_number }}</small>
                                 <br><small class="text-muted">{{ row.asset_type or 'N/A' }} | {{ row.location or 'N/A' }}</small>
+                                <br><small class="text-muted">Created: {{ row.created_at.strftime('%Y-%m-%d') if row.created_at else '' }}</small>
                             </td>
                             <td>
                                 <span class="badge 
@@ -299,10 +331,22 @@
                             </td>
                             <td>{{ row.owner_name or '-' }}</td>
                             <td class="text-center">
+                                {% set mc = row.maintenance_count or 0 %}
+                                <span class="badge maintenance-count-badge 
+                                    {% if mc > 5 %}maintenance-count-high
+                                    {% elif mc > 2 %}maintenance-count-medium
+                                    {% else %}maintenance-count-low{% endif %}">
+                                    {{ mc }}
+                                </span>
+                            </td>
+                            <td class="text-center">
                                 <div class="manage-group">
                                     <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details"><i class="bi bi-eye"></i></a>
                                     <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset"><i class="bi bi-pencil"></i></a>
                                     <a href="/qr/{{ row.id }}" class="btn btn-qr" title="Generate QR Code"><i class="bi bi-qr-code"></i></a>
+                                    <a href="/ticket/new?asset_id={{ row.id }}" class="btn btn-assign" title="Create Ticket" style="color: #17a2b8; border-right: 1px solid #dee2e6 !important;">
+                                        <i class="bi bi-ticket"></i>
+                                    </a>
                                     {% if session.role == 'Admin' %}
                                         {% if row.assigned_to %}
                                             <form action="/return/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Return this asset? It will become available.');">
