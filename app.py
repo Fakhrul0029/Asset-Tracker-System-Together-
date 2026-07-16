@@ -164,7 +164,6 @@ def init_db():
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Create ALL tables first
         cur.execute('''CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             asset_type TEXT,
@@ -239,7 +238,31 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # NOW create all indexes AFTER tables exist
+        # Create tickets table for helpdesk
+        cur.execute('''CREATE TABLE IF NOT EXISTS tickets (
+            id SERIAL PRIMARY KEY,
+            asset_id INTEGER REFERENCES assets(id),
+            ticket_number TEXT UNIQUE NOT NULL,
+            subject TEXT NOT NULL,
+            description TEXT,
+            priority TEXT DEFAULT 'Medium',
+            status TEXT DEFAULT 'Open',
+            assigned_to TEXT,
+            created_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            closed_at TIMESTAMP
+        );''')
+
+        cur.execute('''CREATE TABLE IF NOT EXISTS ticket_comments (
+            id SERIAL PRIMARY KEY,
+            ticket_id INTEGER REFERENCES tickets(id),
+            comment TEXT NOT NULL,
+            user_email TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );''')
+
+        # Create indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_tracking ON assets(tracking_number);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);")
@@ -249,8 +272,14 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed ON assets(completed_date);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_completed_by ON assets(completed_by);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_created ON assets(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tickets_asset ON tickets(asset_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tickets_created ON tickets(created_at);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_asset ON maintenance_logs(asset_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_date ON maintenance_logs(log_date);")
 
         conn.commit()
         app.logger.info("Database initialized successfully!")
@@ -263,6 +292,21 @@ def init_db():
         release_db_connection(conn)
 
 
+def get_maintenance_count(asset_id):
+    """Get total maintenance count for an asset"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM maintenance_logs WHERE asset_id = %s", (asset_id,))
+        count = cur.fetchone()[0]
+        cur.close()
+        release_db_connection(conn)
+        return count
+    except Exception as e:
+        app.logger.error(f"Maintenance count error: {e}")
+        return 0
+
+
 def safe_startup():
     if not DATABASE_URL:
         app.logger.warning("DATABASE_URL is not set. DB init and bootstrap skipped.")
@@ -270,7 +314,7 @@ def safe_startup():
     try:
         init_db()
         ensure_bootstrap_admin()
-        app.logger.info(f"Startup OK. Bootstrap admin: {os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my')}")
+        app.logger.info(f"Startup OK.")
     except Exception as e:
         app.logger.error(f"STARTUP ERROR: {e}")
         traceback.print_exc()
@@ -291,69 +335,76 @@ def dashboard():
         user_role = session.get('role')
         user_email = session.get('email')
         
+        # Date range filter
+        date_filter = request.args.get('date_filter', 'all')
+        start_date = request.args.get('start_date', '')
+        end_date = request.args.get('end_date', '')
+        
+        date_condition = "1=1"
+        params = []
+        
+        if date_filter == 'monthly':
+            # Current month
+            date_condition = "DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND DATE(created_at) < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'"
+        elif date_filter == 'custom' and start_date and end_date:
+            date_condition = "DATE(created_at) >= %s AND DATE(created_at) <= %s"
+            params = [start_date, end_date]
+        
         if user_role == 'Admin':
-            cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
+            query = f"SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE AND {date_condition}"
+            cur.execute(query, tuple(params))
             total = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE")
+            
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE AND {date_condition}"
+            cur.execute(query, tuple(params))
             available = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE")
+            
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE AND {date_condition}"
+            cur.execute(query, tuple(params))
             assigned = cur.fetchone()['count']
-            cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE")
+            
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE AND {date_condition}"
+            cur.execute(query, tuple(params))
             in_repair = cur.fetchone()['count']
             
-            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
+            query = f"SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL AND {date_condition} GROUP BY asset_type"
+            cur.execute(query, tuple(params))
             by_type = cur.fetchall()
-            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
+            
+            query = f"SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL AND {date_condition} GROUP BY location"
+            cur.execute(query, tuple(params))
             by_location = cur.fetchall()
-            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
+            
+            query = f"SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND {date_condition} GROUP BY status"
+            cur.execute(query, tuple(params))
             by_status = cur.fetchall()
         else:
-            cur.execute("""
-                SELECT COUNT(*) FROM assets 
-                WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             total = cur.fetchone()['count']
             
-            cur.execute("""
-                SELECT COUNT(*) FROM assets 
-                WHERE status = 'Available' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             available = cur.fetchone()['count']
             
-            cur.execute("""
-                SELECT COUNT(*) FROM assets 
-                WHERE status = 'Assigned' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             assigned = cur.fetchone()['count']
             
-            cur.execute("""
-                SELECT COUNT(*) FROM assets 
-                WHERE status = 'In Repair' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             in_repair = cur.fetchone()['count']
             
-            cur.execute("""
-                SELECT asset_type, COUNT(*) as count FROM assets 
-                WHERE is_deleted = FALSE AND asset_type IS NOT NULL 
-                AND (assigned_to = %s OR assigned_to = %s)
-                GROUP BY asset_type
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY asset_type"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             by_type = cur.fetchall()
             
-            cur.execute("""
-                SELECT location, COUNT(*) as count FROM assets 
-                WHERE is_deleted = FALSE AND location IS NOT NULL 
-                AND (assigned_to = %s OR assigned_to = %s)
-                GROUP BY location
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY location"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             by_location = cur.fetchall()
             
-            cur.execute("""
-                SELECT status, COUNT(*) as count FROM assets 
-                WHERE is_deleted = FALSE 
-                AND (assigned_to = %s OR assigned_to = %s)
-                GROUP BY status
-            """, (user_email, session.get('full_name')))
+            query = f"SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY status"
+            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
             by_status = cur.fetchall()
         
         cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
@@ -374,7 +425,8 @@ def dashboard():
                              recent_activity=recent_activity,
                              type_labels=type_labels, type_data=type_data,
                              location_labels=location_labels, location_data=location_data,
-                             status_labels=status_labels, status_data=status_data)
+                             status_labels=status_labels, status_data=status_data,
+                             date_filter=date_filter, start_date=start_date, end_date=end_date)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
         flash("An error occurred loading the dashboard.")
@@ -393,6 +445,11 @@ def index():
         order = request.args.get('order', 'desc')
         page = request.args.get('page', 1, type=int)
         per_page = 20
+        serial_search = request.args.get('serial_search', '').strip()
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        date_sort = request.args.get('date_sort', 'created_at')
+        date_order = request.args.get('date_order', 'desc')
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -401,11 +458,28 @@ def index():
         count_query = "SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE"
         params = []
         
+        # Role-based filtering
         if session.get('role') != 'Admin':
             query += " AND (assigned_to = %s OR assigned_to = %s)"
             count_query += " AND (assigned_to = %s OR assigned_to = %s)"
             params.append(session.get('email'))
             params.append(session.get('full_name'))
+            
+        # Serial number search (exact match or partial)
+        if serial_search:
+            query += " AND serial_number ILIKE %s"
+            count_query += " AND serial_number ILIKE %s"
+            params.append(f'%{serial_search}%')
+        
+        # Date range filter
+        if date_from:
+            query += " AND DATE(created_at) >= %s"
+            count_query += " AND DATE(created_at) >= %s"
+            params.append(date_from)
+        if date_to:
+            query += " AND DATE(created_at) <= %s"
+            count_query += " AND DATE(created_at) <= %s"
+            params.append(date_to)
             
         if s:
             query += (
@@ -426,7 +500,8 @@ def index():
         cur.execute(count_query, tuple(params))
         total = cur.fetchone()['count']
         
-        valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type']
+        # Sorting - support date sorting
+        valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type', 'created_at', 'checkout_date']
         if sort not in valid_sorts:
             sort = 'id'
         order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
@@ -437,6 +512,10 @@ def index():
         
         cur.execute(query, tuple(params))
         data = cur.fetchall()
+
+        # Get maintenance counts for each asset
+        for asset in data:
+            asset['maintenance_count'] = get_maintenance_count(asset['id'])
 
         users = []
         if session.get('role') == 'Admin':
@@ -457,11 +536,251 @@ def index():
 
         return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
                              sort=sort, order=order, page=page, total_pages=total_pages, 
-                             per_page=per_page, users=users)
+                             per_page=per_page, users=users, serial_search=serial_search,
+                             date_from=date_from, date_to=date_to, date_sort=date_sort, date_order=date_order)
     except Exception as e:
         app.logger.error(f"Index error: {e}")
         flash("An error occurred loading assets.")
         return redirect(url_for('dashboard'))
+
+
+@app.route('/tickets')
+def tickets():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        if session.get('role') == 'Admin':
+            cur.execute("""
+                SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
+                FROM tickets t
+                LEFT JOIN assets a ON t.asset_id = a.id
+                ORDER BY t.created_at DESC
+            """)
+        else:
+            cur.execute("""
+                SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
+                FROM tickets t
+                LEFT JOIN assets a ON t.asset_id = a.id
+                WHERE t.created_by = %s OR t.assigned_to = %s
+                ORDER BY t.created_at DESC
+            """, (session.get('email'), session.get('full_name')))
+        
+        tickets = cur.fetchall()
+        cur.close()
+        release_db_connection(conn)
+        
+        return render_template('tickets.html', tickets=tickets)
+    except Exception as e:
+        app.logger.error(f"Tickets error: {e}")
+        flash("An error occurred loading tickets.")
+        return redirect(url_for('dashboard'))
+
+
+@app.route('/ticket/new', methods=['GET', 'POST'])
+def new_ticket():
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        try:
+            asset_id = request.form.get('asset_id')
+            subject = request.form.get('subject')
+            description = request.form.get('description')
+            priority = request.form.get('priority', 'Medium')
+            
+            if not subject:
+                flash("Subject is required.")
+                return redirect(url_for('new_ticket'))
+            
+            conn = get_db_connection()
+            cur = conn.cursor()
+            
+            # Generate ticket number
+            ticket_number = f"TICKET-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+            
+            cur.execute("""
+                INSERT INTO tickets (asset_id, ticket_number, subject, description, priority, status, created_by, assigned_to)
+                VALUES (%s, %s, %s, %s, %s, 'Open', %s, %s)
+            """, (asset_id if asset_id else None, ticket_number, subject, description, priority, 
+                  session.get('email'), session.get('full_name')))
+            
+            conn.commit()
+            cur.close()
+            release_db_connection(conn)
+            
+            log_activity(session.get('email'), f"TICKET CREATED: {ticket_number}", None)
+            flash(f"Ticket {ticket_number} created successfully!")
+            return redirect(url_for('tickets'))
+        except Exception as e:
+            app.logger.error(f"New ticket error: {e}")
+            flash("An error occurred creating the ticket.")
+            return redirect(url_for('tickets'))
+    
+    # GET request - show form
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cur.execute("SELECT id, tracking_number, cpu_name FROM assets WHERE is_deleted = FALSE")
+    assets = cur.fetchall()
+    cur.close()
+    release_db_connection(conn)
+    
+    return render_template('new_ticket.html', assets=assets)
+
+
+@app.route('/ticket/<int:id>')
+def view_ticket(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("""
+            SELECT t.*, a.tracking_number, a.cpu_name as asset_name 
+            FROM tickets t
+            LEFT JOIN assets a ON t.asset_id = a.id
+            WHERE t.id = %s
+        """, (id,))
+        ticket = cur.fetchone()
+        
+        if not ticket:
+            flash("Ticket not found.")
+            cur.close()
+            release_db_connection(conn)
+            return redirect(url_for('tickets'))
+        
+        # Check permission
+        if session.get('role') != 'Admin' and ticket['created_by'] != session.get('email') and ticket['assigned_to'] != session.get('full_name'):
+            flash("You don't have permission to view this ticket.")
+            cur.close()
+            release_db_connection(conn)
+            return redirect(url_for('tickets'))
+        
+        # Get comments
+        cur.execute("""
+            SELECT * FROM ticket_comments 
+            WHERE ticket_id = %s 
+            ORDER BY created_at ASC
+        """, (id,))
+        comments = cur.fetchall()
+        
+        cur.close()
+        release_db_connection(conn)
+        
+        return render_template('ticket_detail.html', ticket=ticket, comments=comments)
+    except Exception as e:
+        app.logger.error(f"View ticket error: {e}")
+        flash("An error occurred loading the ticket.")
+        return redirect(url_for('tickets'))
+
+
+@app.route('/ticket/<int:id>/comment', methods=['POST'])
+def add_ticket_comment(id):
+    if 'user' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        comment = request.form.get('comment', '').strip()
+        if not comment:
+            flash("Comment cannot be empty.")
+            return redirect(url_for('view_ticket', id=id))
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO ticket_comments (ticket_id, comment, user_email)
+            VALUES (%s, %s, %s)
+        """, (id, comment, session.get('email')))
+        
+        # Update ticket updated_at
+        cur.execute("""
+            UPDATE tickets SET updated_at = %s WHERE id = %s
+        """, (datetime.now(), id))
+        
+        conn.commit()
+        cur.close()
+        release_db_connection(conn)
+        
+        log_activity(session.get('email'), f"TICKET COMMENT ADDED: Ticket #{id}", None)
+        flash("Comment added successfully!")
+        return redirect(url_for('view_ticket', id=id))
+    except Exception as e:
+        app.logger.error(f"Add comment error: {e}")
+        flash("An error occurred adding the comment.")
+        return redirect(url_for('view_ticket', id=id))
+
+
+@app.route('/ticket/<int:id>/update_status', methods=['POST'])
+def update_ticket_status(id):
+    if 'user' not in session or session.get('role') != 'Admin':
+        flash("Only admins can update ticket status.")
+        return redirect(url_for('tickets'))
+    
+    try:
+        status = request.form.get('status')
+        valid_statuses = ['Open', 'In Progress', 'Resolved', 'Closed']
+        if status not in valid_statuses:
+            flash("Invalid status.")
+            return redirect(url_for('view_ticket', id=id))
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        if status == 'Closed':
+            cur.execute("""
+                UPDATE tickets SET status = %s, updated_at = %s, closed_at = %s WHERE id = %s
+            """, (status, datetime.now(), datetime.now(), id))
+        else:
+            cur.execute("""
+                UPDATE tickets SET status = %s, updated_at = %s WHERE id = %s
+            """, (status, datetime.now(), id))
+        
+        conn.commit()
+        cur.close()
+        release_db_connection(conn)
+        
+        log_activity(session.get('email'), f"TICKET STATUS UPDATED TO {status}: Ticket #{id}", None)
+        flash(f"Ticket status updated to {status}!")
+        return redirect(url_for('view_ticket', id=id))
+    except Exception as e:
+        app.logger.error(f"Update ticket status error: {e}")
+        flash("An error occurred updating the ticket status.")
+        return redirect(url_for('view_ticket', id=id))
+
+
+@app.route('/ticket/<int:id>/assign', methods=['POST'])
+def assign_ticket(id):
+    if 'user' not in session or session.get('role') != 'Admin':
+        flash("Only admins can assign tickets.")
+        return redirect(url_for('tickets'))
+    
+    try:
+        assigned_to = request.form.get('assigned_to', '').strip()
+        if not assigned_to:
+            flash("Please enter a user name to assign this ticket.")
+            return redirect(url_for('view_ticket', id=id))
+        
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE tickets SET assigned_to = %s, updated_at = %s WHERE id = %s
+        """, (assigned_to, datetime.now(), id))
+        conn.commit()
+        cur.close()
+        release_db_connection(conn)
+        
+        log_activity(session.get('email'), f"TICKET ASSIGNED TO {assigned_to}: Ticket #{id}", None)
+        flash(f"Ticket assigned to {assigned_to}!")
+        return redirect(url_for('view_ticket', id=id))
+    except Exception as e:
+        app.logger.error(f"Assign ticket error: {e}")
+        flash("An error occurred assigning the ticket.")
+        return redirect(url_for('view_ticket', id=id))
 
 
 @app.route('/edit/<int:id>', methods=['GET', 'POST'])
@@ -586,8 +905,11 @@ def edit_asset(id):
         if not asset:
             flash("Asset not found.")
             return redirect(url_for('index'))
+        
+        # Get maintenance count        maintenance_count = get_maintenance_count(id)
 
-        return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin')
+        return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin',
+                               maintenance_count=maintenance_count)
     except Exception as e:
         app.logger.error(f"Edit asset error: {e}")
         flash("An error occurred updating the asset.")
@@ -621,11 +943,21 @@ def view_asset(id):
             (id,)
         )
         logs = cur.fetchall()
+        
+        # Get maintenance count
+        maintenance_count = get_maintenance_count(id)
+        
+        # Get tickets for this asset
+        cur.execute("""
+            SELECT * FROM tickets WHERE asset_id = %s ORDER BY created_at DESC
+        """, (id,))
+        tickets = cur.fetchall()
+        
         conn.commit()
         cur.close()
         release_db_connection(conn)
 
-        return render_template('view.html', asset=asset, logs=logs)
+        return render_template('view.html', asset=asset, logs=logs, tickets=tickets, maintenance_count=maintenance_count)
     except Exception as e:
         app.logger.error(f"View asset error: {e}")
         flash("An error occurred loading the asset.")
@@ -835,7 +1167,7 @@ def add_asset():
                 request.form.get('serial_number'),
                 request.form.get('ram_size'),
                 request.form.get('storage_type'),
-                'Available',  # Default status
+                'Available',
                 request.form.get('location'),
                 request.form.get('description'),
                 request.form.get('owner_name')
@@ -1255,6 +1587,9 @@ def export_repair_request(id):
             flash("Asset not found.")
             return redirect(url_for('index'))
         
+        # Get maintenance count for the report
+        maintenance_count = get_maintenance_count(id)
+        
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -1276,6 +1611,7 @@ def export_repair_request(id):
                 .signature {{ margin-top: 40px; }}
                 .signature-line {{ margin-top: 30px; display: flex; justify-content: space-between; }}
                 .footer {{ margin-top: 40px; text-align: center; font-size: 12px; color: #666; }}
+                .maintenance-count {{ font-size: 18px; font-weight: bold; color: #dc3545; }}
                 @media print {{
                     body {{ margin: 0; }}
                     .no-print {{ display: none; }}
@@ -1304,6 +1640,7 @@ def export_repair_request(id):
                 <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
                 <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
                 <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting Parts</strong></div>
+                <div class="info-row"><span class="info-label">Total Maintenance Cases:</span> <span class="maintenance-count">{maintenance_count}</span></div>
                 <div class="info-row"><span class="info-label">Requested By:</span> {session.get('full_name')}</div>
             </div>
             
@@ -1380,29 +1717,40 @@ def completed_assets():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
+        # Date range filter
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        
         if session.get('role') == 'Admin':
-            # Admin sees ALL completed assets with who completed them
-            cur.execute("""
+            query = """
                 SELECT * FROM assets 
                 WHERE is_deleted = FALSE 
                 AND completed_date IS NOT NULL
-                ORDER BY completed_date DESC
-            """)
+            """
+            params = []
         else:
-            # User sees only assets they completed
-            cur.execute("""
+            query = """
                 SELECT * FROM assets 
                 WHERE is_deleted = FALSE 
                 AND completed_date IS NOT NULL
                 AND (completed_by = %s OR completed_by = %s)
-                ORDER BY completed_date DESC
-            """, (session.get('full_name'), session.get('email')))
+            """
+            params = [session.get('full_name'), session.get('email')]
         
+        if date_from:
+            query += " AND DATE(completed_date) >= %s"
+            params.append(date_from)
+        if date_to:
+            query += " AND DATE(completed_date) <= %s"
+            params.append(date_to)
+        
+        query += " ORDER BY completed_date DESC"
+        cur.execute(query, tuple(params))
         completed_assets = cur.fetchall()
         cur.close()
         release_db_connection(conn)
         
-        return render_template('completed_assets.html', assets=completed_assets)
+        return render_template('completed_assets.html', assets=completed_assets, date_from=date_from, date_to=date_to)
     except Exception as e:
         app.logger.error(f"Completed assets error: {e}")
         flash("An error occurred loading completed assets.")
