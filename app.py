@@ -610,18 +610,50 @@ def new_repair_request():
     
     if request.method == 'POST':
         try:
-            asset_id = request.form.get('asset_id')
-            issue_description = request.form.get('issue_description')
-            priority = request.form.get('priority', 'Medium')
-            scheduled_send_date = request.form.get('scheduled_send_date')
+            # Owner information
+            owner_name = request.form.get('owner_name', '').strip()
             requester_email = request.form.get('requester_email', '').strip()
+            phone_number = request.form.get('phone_number', '').strip()
+            
+            # Asset information
+            asset_name = request.form.get('asset_name', '').strip()
+            asset_serial = request.form.get('asset_serial', '').strip()
+            asset_type = request.form.get('asset_type', '').strip()
+            asset_brand = request.form.get('asset_brand', '').strip()
+            
+            # Issue & appointment
+            issue_description = request.form.get('issue_description', '').strip()
+            priority = request.form.get('priority', 'Medium')
+            scheduled_send_date = request.form.get('scheduled_send_date', '').strip()
+            additional_notes = request.form.get('additional_notes', '').strip()
+            
+            # Validation
+            if not owner_name:
+                flash("Owner name is required.")
+                return redirect(url_for('new_repair_request'))
+            
+            if not requester_email:
+                flash("Email address is required.")
+                return redirect(url_for('new_repair_request'))
+            
+            if not asset_name:
+                flash("Asset name/model is required.")
+                return redirect(url_for('new_repair_request'))
+            
+            if not asset_serial:
+                flash("Asset serial number is required.")
+                return redirect(url_for('new_repair_request'))
+            
+            if not asset_type:
+                flash("Asset type is required.")
+                return redirect(url_for('new_repair_request'))
             
             if not issue_description:
                 flash("Issue description is required.")
                 return redirect(url_for('new_repair_request'))
             
-            if not requester_email:
-                flash("Your email is required.")
+            if not scheduled_send_date:
+                flash("Preferred send date is required.")
                 return redirect(url_for('new_repair_request'))
             
             conn = get_db_connection()
@@ -633,29 +665,39 @@ def new_repair_request():
             # Generate request number
             request_number = f"REQ-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
             
-            # Use requester_email as created_by
-            created_by = requester_email
+            # Combine issue description with all details
+            full_description = f"""
+Asset: {asset_name}
+Brand: {asset_brand if asset_brand else 'N/A'}
+Type: {asset_type}
+Serial Number: {asset_serial}
+Owner: {owner_name}
+Phone: {phone_number if phone_number else 'N/A'}
+
+Issue: {issue_description}
+
+Additional Notes: {additional_notes if additional_notes else 'None'}
+            """.strip()
             
             cur.execute("""
                 INSERT INTO repair_requests (
                     asset_id, request_number, issue_description, priority, 
                     status, scheduled_send_date, created_by
                 )
-                VALUES (%s, %s, %s, %s, 'Pending', %s, %s)
+                VALUES (NULL, %s, %s, %s, 'Pending', %s, %s)
             """, (
-                asset_id if asset_id else None, 
                 request_number, 
-                issue_description, 
+                full_description, 
                 priority, 
-                scheduled_send_date if scheduled_send_date else None,
-                created_by
+                scheduled_send_date,
+                requester_email
             ))
             
             conn.commit()
             cur.close()
             conn.close()
             
-            flash(f"Repair request {request_number} created successfully! You will be notified when it's approved.")
+            flash(f"Repair appointment {request_number} scheduled successfully! We'll contact you at {requester_email}.")
             return redirect(url_for('repair_requests_track'))
         except Exception as e:
             app.logger.error(f"New repair request error: {e}")
@@ -663,23 +705,7 @@ def new_repair_request():
             return redirect(url_for('new_repair_request'))
     
     # GET request - show form
-    conn = get_db_connection()
-    if not conn:
-        flash("Database connection error.")
-        return render_template('new_repair_request.html', assets=[])
-    
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    try:
-        cur.execute("SELECT id, tracking_number, cpu_name, serial_number FROM assets WHERE is_deleted = FALSE")
-        assets = cur.fetchall()
-    except Exception as e:
-        app.logger.error(f"Error fetching assets: {e}")
-        assets = []
-    finally:
-        cur.close()
-        conn.close()
-    
-    return render_template('new_repair_request.html', assets=assets)
+    return render_template('new_repair_request.html')
 
 
 @app.route('/repair_request/<int:id>')
