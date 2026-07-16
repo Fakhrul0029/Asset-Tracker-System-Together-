@@ -60,6 +60,15 @@
         .status-history .badge {
             font-size: 0.75rem;
         }
+        .asset-created-alert {
+            border-left: 4px solid #28a745;
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        body.dark-mode .asset-created-alert {
+            background: #1a3a1a;
+        }
     </style>
 </head>
 <body>
@@ -194,6 +203,23 @@
                             {% endif %}
                         </div>
 
+                        <!-- Asset Created Success Message -->
+                        {% if request.status == 'Approved' %}
+                        <div class="asset-created-alert mt-3">
+                            <div class="d-flex align-items-start">
+                                <i class="bi bi-check-circle-fill text-success me-2 fs-4"></i>
+                                <div>
+                                    <strong>This repair request has been approved!</strong>
+                                    {% if request.asset_id %}
+                                        <br>The asset has been <a href="/view/{{ request.asset_id }}">added to the system</a> and is now available for assignment.
+                                    {% else %}
+                                        <br>The asset has been added to the system and is now available in the <a href="/">asset list</a>.
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
                         <!-- Admin Actions -->
                         {% if is_admin %}
                         <hr>
@@ -202,7 +228,7 @@
                                 <form method="POST" action="/repair_request/{{ request.id }}/approve" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-success btn-sm w-100" {% if request.status != 'Pending' %}disabled{% endif %}>
-                                        <i class="bi bi-check-circle me-1"></i>Approve
+                                        <i class="bi bi-check-circle me-1"></i>Approve & Create Asset
                                     </button>
                                 </form>
                             </div>
@@ -231,6 +257,7 @@
                                 </form>
                             </div>
                         </div>
+                        <small class="text-muted mt-2 d-block">Approve will create an asset in the system from the repair request details.</small>
                         {% endif %}
                     </div>
                 </div>
