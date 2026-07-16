@@ -120,7 +120,7 @@
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a>
+                        <a class="nav-link" href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -344,8 +344,8 @@
                                     <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details"><i class="bi bi-eye"></i></a>
                                     <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset"><i class="bi bi-pencil"></i></a>
                                     <a href="/qr/{{ row.id }}" class="btn btn-qr" title="Generate QR Code"><i class="bi bi-qr-code"></i></a>
-                                    <a href="/ticket/new?asset_id={{ row.id }}" class="btn btn-assign" title="Create Ticket" style="color: #17a2b8; border-right: 1px solid #dee2e6 !important;">
-                                        <i class="bi bi-ticket"></i>
+                                    <a href="/repair_request/new?asset_id={{ row.id }}" class="btn btn-assign" title="Create Repair Request" style="color: #ffc107; border-right: 1px solid #dee2e6 !important;">
+                                        <i class="bi bi-tools"></i>
                                     </a>
                                     {% if session.role == 'Admin' %}
                                         {% if row.assigned_to %}
