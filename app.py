@@ -15,7 +15,6 @@ from logging.handlers import RotatingFileHandler
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, Response, jsonify
 from flask_wtf.csrf import CSRFProtect
-from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 
 app = Flask(__name__)
@@ -28,11 +27,17 @@ csrf = CSRFProtect(app)
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # Configure connection pooling
-connection_pool = psycopg2.pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=10,
-    dsn=DATABASE_URL
-)
+if DATABASE_URL:
+    try:
+        connection_pool = psycopg2.pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=10,
+            dsn=DATABASE_URL
+        )
+    except:
+        connection_pool = None
+else:
+    connection_pool = None
 
 # Configure logging
 if not os.path.exists('logs'):
@@ -51,20 +56,35 @@ login_attempts = {}
 
 
 def get_db_connection():
+    if not DATABASE_URL:
+        app.logger.error("DATABASE_URL is not set")
+        return None
     url = DATABASE_URL
     if url and url.startswith('postgres://'):
         url = url.replace('postgres://', 'postgresql://', 1)
     try:
-        return connection_pool.getconn()
-    except:
+        if connection_pool:
+            return connection_pool.getconn()
+        else:
+            return psycopg2.connect(url)
+    except Exception as e:
+        app.logger.error(f"Database connection error: {e}")
         return psycopg2.connect(url)
 
 
 def release_db_connection(conn):
+    if not conn:
+        return
     try:
-        connection_pool.putconn(conn)
+        if connection_pool:
+            connection_pool.putconn(conn)
+        else:
+            conn.close()
     except:
-        conn.close()
+        try:
+            conn.close()
+        except:
+            pass
 
 
 def is_admin():
@@ -104,6 +124,8 @@ def check_rate_limit(email):
 def log_activity(user_label, action, asset_serial=None):
     try:
         conn = get_db_connection()
+        if not conn:
+            return
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO activity_logs (user_email, action, asset_serial) VALUES (%s,%s,%s)",
@@ -119,6 +141,8 @@ def log_activity(user_label, action, asset_serial=None):
 def log_access(email, action):
     try:
         conn = get_db_connection()
+        if not conn:
+            return
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO access_logs (user_email, action) VALUES (%s,%s)",
@@ -132,38 +156,54 @@ def log_access(email, action):
 
 
 def ensure_bootstrap_admin():
+    if not DATABASE_URL:
+        return
     email = os.environ.get('BOOTSTRAP_ADMIN_EMAIL', 'admin@jtdi.gov.my').strip().lower()
     password = 'Admin123'
     username = os.environ.get('BOOTSTRAP_ADMIN_USERNAME', 'admin')
     full_name = os.environ.get('BOOTSTRAP_ADMIN_NAME', 'System Administrator')
 
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute(
-        "SELECT id FROM users WHERE username = %s OR email = %s",
-        (username, email)
-    )
-    row = cur.fetchone()
-    if row:
-        cur.execute("""
-            UPDATE users
-            SET full_name = %s, email = %s, password = %s, role = 'Admin', first_login = FALSE
-            WHERE id = %s
-        """, (full_name, email, password, row['id']))
-    else:
-        cur.execute("""
-            INSERT INTO users (full_name, username, email, password, role, first_login)
-            VALUES (%s, %s, %s, %s, 'Admin', FALSE)
-        """, (full_name, username, email, password))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute(
+            "SELECT id FROM users WHERE username = %s OR email = %s",
+            (username, email)
+        )
+        row = cur.fetchone()
+        if row:
+            cur.execute("""
+                UPDATE users
+                SET full_name = %s, email = %s, password = %s, role = 'Admin', first_login = FALSE
+                WHERE id = %s
+            """, (full_name, email, password, row['id']))
+        else:
+            cur.execute("""
+                INSERT INTO users (full_name, username, email, password, role, first_login)
+                VALUES (%s, %s, %s, %s, 'Admin', FALSE)
+            """, (full_name, username, email, password))
+        conn.commit()
+        cur.close()
+        release_db_connection(conn)
+        app.logger.info(f"Bootstrap admin ensured: {email}")
+    except Exception as e:
+        app.logger.error(f"Bootstrap admin error: {e}")
 
 
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
+    if not DATABASE_URL:
+        app.logger.warning("DATABASE_URL is not set. DB init skipped.")
+        return
     try:
+        conn = get_db_connection()
+        if not conn:
+            app.logger.error("Failed to connect to database")
+            return
+        cur = conn.cursor()
+        
+        # Create tables
         cur.execute('''CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             asset_type TEXT,
@@ -238,7 +278,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # Create tickets table for helpdesk
         cur.execute('''CREATE TABLE IF NOT EXISTS tickets (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER REFERENCES assets(id),
@@ -282,20 +321,20 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_maintenance_date ON maintenance_logs(log_date);")
 
         conn.commit()
-        app.logger.info("Database initialized successfully!")
-    except Exception as e:
-        conn.rollback()
-        app.logger.error(f"INIT DB ERROR: {e}")
-        raise
-    finally:
         cur.close()
         release_db_connection(conn)
+        app.logger.info("Database initialized successfully!")
+    except Exception as e:
+        app.logger.error(f"INIT DB ERROR: {e}")
+        traceback.print_exc()
 
 
 def get_maintenance_count(asset_id):
     """Get total maintenance count for an asset"""
     try:
         conn = get_db_connection()
+        if not conn:
+            return 0
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM maintenance_logs WHERE asset_id = %s", (asset_id,))
         count = cur.fetchone()[0]
@@ -314,12 +353,13 @@ def safe_startup():
     try:
         init_db()
         ensure_bootstrap_admin()
-        app.logger.info(f"Startup OK.")
+        app.logger.info("Startup OK.")
     except Exception as e:
         app.logger.error(f"STARTUP ERROR: {e}")
         traceback.print_exc()
 
 
+# Initialize on startup
 safe_startup()
 
 
@@ -330,6 +370,9 @@ def dashboard():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error. Please try again.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         user_role = session.get('role')
@@ -427,8 +470,9 @@ def dashboard():
                              date_filter=date_filter, start_date=start_date, end_date=end_date)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
+        traceback.print_exc()
         flash("An error occurred loading the dashboard.")
-        return redirect(url_for('index'))
+        return redirect(url_for('login'))
 
 
 @app.route('/')
@@ -448,6 +492,9 @@ def index():
         date_to = request.args.get('date_to', '').strip()
 
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error. Please try again.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         query = "SELECT * FROM assets WHERE is_deleted = FALSE"
@@ -556,6 +603,9 @@ def tickets():
     
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         if session.get('role') == 'Admin':
@@ -602,6 +652,9 @@ def new_ticket():
                 return redirect(url_for('new_ticket'))
             
             conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return redirect(url_for('tickets'))
             cur = conn.cursor()
             
             ticket_number = f"TICKET-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
@@ -625,6 +678,9 @@ def new_ticket():
             return redirect(url_for('tickets'))
     
     conn = get_db_connection()
+    if not conn:
+        flash("Database connection error.")
+        return redirect(url_for('tickets'))
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT id, tracking_number, cpu_name FROM assets WHERE is_deleted = FALSE")
     assets = cur.fetchall()
@@ -641,6 +697,9 @@ def view_ticket(id):
     
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('tickets'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         cur.execute("""
@@ -692,6 +751,9 @@ def add_ticket_comment(id):
             return redirect(url_for('view_ticket', id=id))
         
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('view_ticket', id=id))
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO ticket_comments (ticket_id, comment, user_email)
@@ -729,6 +791,9 @@ def update_ticket_status(id):
             return redirect(url_for('view_ticket', id=id))
         
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('view_ticket', id=id))
         cur = conn.cursor()
         
         if status == 'Closed':
@@ -766,6 +831,9 @@ def assign_ticket(id):
             return redirect(url_for('view_ticket', id=id))
         
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('view_ticket', id=id))
         cur = conn.cursor()
         cur.execute("""
             UPDATE tickets SET assigned_to = %s, updated_at = %s WHERE id = %s
@@ -790,6 +858,9 @@ def edit_asset(id):
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         cur.execute("SELECT assigned_to, serial_number FROM assets WHERE id = %s", (id,))
@@ -914,6 +985,9 @@ def edit_asset(id):
 def view_asset(id):
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
         asset = cur.fetchone()
@@ -965,6 +1039,9 @@ def legacy_asset_view(id):
 def qr_code(id):
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
         asset = cur.fetchone()
@@ -1001,6 +1078,9 @@ def assign_asset(id):
             return redirect(url_for('index'))
 
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         cur.execute("SELECT email, full_name, username FROM users WHERE email = %s", (assigned_to_email,))
@@ -1052,6 +1132,9 @@ def return_asset(id):
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         cur.execute("SELECT serial_number, assigned_to, cpu_name, tracking_number FROM assets WHERE id = %s", (id,))
@@ -1108,6 +1191,9 @@ def delete_asset(id):
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
@@ -1139,6 +1225,9 @@ def add_asset():
     if request.method == 'POST':
         try:
             conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return redirect(url_for('index'))
             cur = conn.cursor()
             tn = (request.form.get('tracking_number') or '').strip()
             if not tn:
@@ -1194,6 +1283,9 @@ def login():
 
         try:
             conn = get_db_connection()
+            if not conn:
+                flash("Database connection error. Please try again.")
+                return render_template('login.html')
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             cur.execute("SELECT * FROM users WHERE email = %s", (email,))
             user = cur.fetchone()
@@ -1270,6 +1362,9 @@ def change_password():
         
         try:
             conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return render_template('change_password.html')
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
             cur.execute("SELECT password FROM users WHERE email = %s", (session.get('email'),))
             user = cur.fetchone()
@@ -1312,6 +1407,9 @@ def activity():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
         logs = cur.fetchall()
@@ -1332,6 +1430,9 @@ def export_csv():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor()
         query = "SELECT * FROM assets WHERE is_deleted = FALSE"
         params = []
@@ -1372,6 +1473,9 @@ def export_excel():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor()
         query = "SELECT * FROM assets WHERE is_deleted = FALSE"
         params = []
@@ -1419,6 +1523,9 @@ def export_analytics_report():
     
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         user_role = session.get('role')
@@ -1566,6 +1673,9 @@ def export_repair_request(id):
     
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
         asset = cur.fetchone()
@@ -1703,6 +1813,9 @@ def completed_assets():
     
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         date_from = request.args.get('date_from', '').strip()
@@ -1751,6 +1864,9 @@ def admin_dashboard():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM users ORDER BY id DESC")
         users = cur.fetchall()
@@ -1776,6 +1892,9 @@ def manage_users():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('admin_dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
@@ -1828,6 +1947,9 @@ def edit_user(id):
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('manage_users'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         if request.method == 'POST':
@@ -1893,6 +2015,9 @@ def delete_user(id):
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('manage_users'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT username FROM users WHERE id = %s", (id,))
         user = cur.fetchone()
@@ -1921,6 +2046,9 @@ def admin_logs():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('admin_dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 100")
         logs = cur.fetchall()
@@ -1948,6 +2076,9 @@ def backup_database():
 
     try:
         conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('admin_dashboard'))
         cur = conn.cursor()
 
         cur.execute("""
@@ -1989,6 +2120,6 @@ def backup_database():
         return redirect(url_for('admin_dashboard'))
 
 
+# This is only for local development - Render uses Gunicorn
 if __name__ == "__main__":
-    #For local deployment only
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)
