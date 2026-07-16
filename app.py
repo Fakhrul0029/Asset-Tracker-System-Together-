@@ -335,7 +335,6 @@ def dashboard():
         user_role = session.get('role')
         user_email = session.get('email')
         
-        # Date range filter
         date_filter = request.args.get('date_filter', 'all')
         start_date = request.args.get('start_date', '')
         end_date = request.args.get('end_date', '')
@@ -344,7 +343,6 @@ def dashboard():
         params = []
         
         if date_filter == 'monthly':
-            # Current month
             date_condition = "DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND DATE(created_at) < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'"
         elif date_filter == 'custom' and start_date and end_date:
             date_condition = "DATE(created_at) >= %s AND DATE(created_at) <= %s"
@@ -448,8 +446,6 @@ def index():
         serial_search = request.args.get('serial_search', '').strip()
         date_from = request.args.get('date_from', '').strip()
         date_to = request.args.get('date_to', '').strip()
-        date_sort = request.args.get('date_sort', 'created_at')
-        date_order = request.args.get('date_order', 'desc')
 
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -458,20 +454,17 @@ def index():
         count_query = "SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE"
         params = []
         
-        # Role-based filtering
         if session.get('role') != 'Admin':
             query += " AND (assigned_to = %s OR assigned_to = %s)"
             count_query += " AND (assigned_to = %s OR assigned_to = %s)"
             params.append(session.get('email'))
             params.append(session.get('full_name'))
             
-        # Serial number search (exact match or partial)
         if serial_search:
             query += " AND serial_number ILIKE %s"
             count_query += " AND serial_number ILIKE %s"
             params.append(f'%{serial_search}%')
         
-        # Date range filter
         if date_from:
             query += " AND DATE(created_at) >= %s"
             count_query += " AND DATE(created_at) >= %s"
@@ -500,8 +493,7 @@ def index():
         cur.execute(count_query, tuple(params))
         total = cur.fetchone()['count']
         
-        # Sorting - support date sorting
-        valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type', 'created_at', 'checkout_date']
+        valid_sorts = ['id', 'tracking_number', 'cpu_name', 'serial_number', 'status', 'location', 'asset_type', 'created_at']
         if sort not in valid_sorts:
             sort = 'id'
         order_dir = 'DESC' if order.lower() == 'desc' else 'ASC'
@@ -513,7 +505,6 @@ def index():
         cur.execute(query, tuple(params))
         data = cur.fetchall()
 
-        # Get maintenance counts for each asset
         for asset in data:
             asset['maintenance_count'] = get_maintenance_count(asset['id'])
 
@@ -537,7 +528,7 @@ def index():
         return render_template('assets.html', data=data, **stats, s_query=s, c_filter=c,
                              sort=sort, order=order, page=page, total_pages=total_pages, 
                              per_page=per_page, users=users, serial_search=serial_search,
-                             date_from=date_from, date_to=date_to, date_sort=date_sort, date_order=date_order)
+                             date_from=date_from, date_to=date_to)
     except Exception as e:
         app.logger.error(f"Index error: {e}")
         flash("An error occurred loading assets.")
@@ -569,11 +560,11 @@ def tickets():
                 ORDER BY t.created_at DESC
             """, (session.get('email'), session.get('full_name')))
         
-        tickets = cur.fetchall()
+        tickets_data = cur.fetchall()
         cur.close()
         release_db_connection(conn)
         
-        return render_template('tickets.html', tickets=tickets)
+        return render_template('tickets.html', tickets=tickets_data)
     except Exception as e:
         app.logger.error(f"Tickets error: {e}")
         flash("An error occurred loading tickets.")
@@ -599,7 +590,6 @@ def new_ticket():
             conn = get_db_connection()
             cur = conn.cursor()
             
-            # Generate ticket number
             ticket_number = f"TICKET-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
             
             cur.execute("""
@@ -620,7 +610,6 @@ def new_ticket():
             flash("An error occurred creating the ticket.")
             return redirect(url_for('tickets'))
     
-    # GET request - show form
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cur.execute("SELECT id, tracking_number, cpu_name FROM assets WHERE is_deleted = FALSE")
@@ -654,14 +643,12 @@ def view_ticket(id):
             release_db_connection(conn)
             return redirect(url_for('tickets'))
         
-        # Check permission
         if session.get('role') != 'Admin' and ticket['created_by'] != session.get('email') and ticket['assigned_to'] != session.get('full_name'):
             flash("You don't have permission to view this ticket.")
             cur.close()
             release_db_connection(conn)
             return redirect(url_for('tickets'))
         
-        # Get comments
         cur.execute("""
             SELECT * FROM ticket_comments 
             WHERE ticket_id = %s 
@@ -697,7 +684,6 @@ def add_ticket_comment(id):
             VALUES (%s, %s, %s)
         """, (id, comment, session.get('email')))
         
-        # Update ticket updated_at
         cur.execute("""
             UPDATE tickets SET updated_at = %s WHERE id = %s
         """, (datetime.now(), id))
@@ -792,7 +778,6 @@ def edit_asset(id):
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get the asset to check permissions
         cur.execute("SELECT assigned_to, serial_number FROM assets WHERE id = %s", (id,))
         asset_check = cur.fetchone()
         
@@ -802,8 +787,6 @@ def edit_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Users can ONLY edit status and maintenance log for their assigned assets
-        # Admins can edit everything
         if session.get('role') != 'Admin':
             if asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name'):
                 flash("You only have permission to update status and maintenance logs for assets assigned to you.")
@@ -811,9 +794,7 @@ def edit_asset(id):
                 release_db_connection(conn)
                 return redirect(url_for('index'))
             
-            # For regular users, only allow status and maintenance log updates
             if request.method == 'POST':
-                # Only update status and maintenance log
                 status = request.form.get('status')
                 comment = request.form.get('comment', '').strip()
                 action_type = request.form.get('action_type', 'Other')
@@ -842,7 +823,6 @@ def edit_asset(id):
                 flash("Asset status and maintenance log updated successfully!")
                 return redirect(url_for('index'))
 
-        # Admin gets full edit access
         if request.method == 'POST':
             cur.execute("""
                 UPDATE assets SET
@@ -906,7 +886,7 @@ def edit_asset(id):
             flash("Asset not found.")
             return redirect(url_for('index'))
         
-        # Get maintenance count        maintenance_count = get_maintenance_count(id)
+        maintenance_count = get_maintenance_count(id)
 
         return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin',
                                maintenance_count=maintenance_count)
@@ -944,20 +924,18 @@ def view_asset(id):
         )
         logs = cur.fetchall()
         
-        # Get maintenance count
         maintenance_count = get_maintenance_count(id)
         
-        # Get tickets for this asset
         cur.execute("""
             SELECT * FROM tickets WHERE asset_id = %s ORDER BY created_at DESC
         """, (id,))
-        tickets = cur.fetchall()
+        tickets_data = cur.fetchall()
         
         conn.commit()
         cur.close()
         release_db_connection(conn)
 
-        return render_template('view.html', asset=asset, logs=logs, tickets=tickets, maintenance_count=maintenance_count)
+        return render_template('view.html', asset=asset, logs=logs, tickets=tickets_data, maintenance_count=maintenance_count)
     except Exception as e:
         app.logger.error(f"View asset error: {e}")
         flash("An error occurred loading the asset.")
@@ -1071,14 +1049,12 @@ def return_asset(id):
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Check permission - users can return their assigned assets, admins can return any
         if session.get('role') != 'Admin' and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
             flash("You can only return assets assigned to you.")
             cur.close()
             release_db_connection(conn)
             return redirect(url_for('index'))
         
-        # Update asset - set to Completed, clear assignment, set completed_date and completed_by
         cur.execute("""
             UPDATE assets SET 
                 assigned_to = NULL,
@@ -1092,7 +1068,6 @@ def return_asset(id):
         
         conn.commit()
         
-        # Log the return activity
         if row:
             log_activity(
                 session.get('email') or session.get('full_name'),
@@ -1587,7 +1562,6 @@ def export_repair_request(id):
             flash("Asset not found.")
             return redirect(url_for('index'))
         
-        # Get maintenance count for the report
         maintenance_count = get_maintenance_count(id)
         
         html_content = f"""
@@ -1717,7 +1691,6 @@ def completed_assets():
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Date range filter
         date_from = request.args.get('date_from', '').strip()
         date_to = request.args.get('date_to', '').strip()
         
@@ -1746,11 +1719,11 @@ def completed_assets():
         
         query += " ORDER BY completed_date DESC"
         cur.execute(query, tuple(params))
-        completed_assets = cur.fetchall()
+        completed_assets_data = cur.fetchall()
         cur.close()
         release_db_connection(conn)
         
-        return render_template('completed_assets.html', assets=completed_assets, date_from=date_from, date_to=date_to)
+        return render_template('completed_assets.html', assets=completed_assets_data, date_from=date_from, date_to=date_to)
     except Exception as e:
         app.logger.error(f"Completed assets error: {e}")
         flash("An error occurred loading completed assets.")
