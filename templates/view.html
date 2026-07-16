@@ -95,22 +95,21 @@
         body.dark-mode .log-user {
             color: #999;
         }
-        .ticket-item {
-            border-left: 3px solid #17a2b8;
+        .repair-request-item {
+            border-left: 3px solid #ffc107;
             padding: 10px 15px;
             margin-bottom: 8px;
             background: #f8f9fa;
             border-radius: 6px;
         }
-        body.dark-mode .ticket-item {
+        body.dark-mode .repair-request-item {
             background: #1e1e3f;
         }
-        .maintenance-count-badge {
-            font-size: 1.2rem;
-            font-weight: bold;
-            padding: 8px 16px;
-            border-radius: 30px;
-        }
+        .badge-pending { background-color: #ffc107; color: #212529; }
+        .badge-approved { background-color: #28a745; color: white; }
+        .badge-sent { background-color: #0d6efd; color: white; }
+        .badge-completed { background-color: #6f42c1; color: white; }
+        .badge-rejected { background-color: #dc3545; color: white; }
     </style>
 </head>
 <body>
@@ -134,7 +133,7 @@
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="/tickets"><i class="bi bi-ticket me-1"></i>Tickets</a>
+                        <a class="nav-link" href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -309,8 +308,8 @@
                         <a href="{{ url_for('index') }}" class="btn btn-secondary">
                             <i class="bi bi-arrow-left me-1"></i>Back to Assets
                         </a>
-                        <a href="/ticket/new?asset_id={{ asset.id }}" class="btn btn-outline-info">
-                            <i class="bi bi-ticket me-1"></i>Create Ticket
+                        <a href="/repair_request/new?asset_id={{ asset.id }}" class="btn btn-outline-warning">
+                            <i class="bi bi-tools me-1"></i>Create Repair Request
                         </a>
                     </div>
                 </div>
@@ -352,35 +351,36 @@
                     </div>
                 </div>
 
-                <!-- Tickets Section -->
+                <!-- Repair Requests Section -->
                 <div class="card">
                     <div class="card-header">
-                        <i class="bi bi-ticket me-2"></i>Related Tickets ({{ tickets|length }})
+                        <i class="bi bi-tools me-2"></i>Repair Requests ({{ repair_requests|length }})
                     </div>
                     <div class="card-body">
-                        {% if tickets %}
-                            {% for ticket in tickets %}
-                            <div class="ticket-item">
+                        {% if repair_requests %}
+                            {% for req in repair_requests %}
+                            <div class="repair-request-item">
                                 <div class="d-flex justify-content-between align-items-center">
-                                    <a href="/ticket/{{ ticket.id }}" class="fw-bold">{{ ticket.ticket_number }}</a>
+                                    <a href="/repair_request/{{ req.id }}" class="fw-bold">{{ req.request_number }}</a>
                                     <span class="badge 
-                                        {% if ticket.status == 'Open' %}bg-success
-                                        {% elif ticket.status == 'In Progress' %}bg-warning text-dark
-                                        {% elif ticket.status == 'Resolved' %}bg-info
-                                        {% else %}bg-secondary{% endif %} 
+                                        {% if req.status == 'Pending' %}badge-pending
+                                        {% elif req.status == 'Approved' %}badge-approved
+                                        {% elif req.status == 'Sent' %}badge-sent
+                                        {% elif req.status == 'Completed' %}badge-completed
+                                        {% else %}badge-rejected{% endif %} 
                                     ">
-                                        {{ ticket.status }}
+                                        {{ req.status }}
                                     </span>
                                 </div>
-                                <small class="text-muted">{{ ticket.subject }}</small>
-                                <br><small class="text-muted">{{ ticket.created_at.strftime('%Y-%m-%d') if ticket.created_at else '' }}</small>
+                                <small class="text-muted">{{ req.issue_description[:100] }}{% if req.issue_description|length > 100 %}...{% endif %}</small>
+                                <br><small class="text-muted">{{ req.created_at.strftime('%Y-%m-%d') if req.created_at else '' }}</small>
                             </div>
                             {% endfor %}
                         {% else %}
-                            <p class="text-muted text-center py-2">No tickets for this asset.</p>
+                            <p class="text-muted text-center py-2">No repair requests for this asset.</p>
                         {% endif %}
-                        <a href="/ticket/new?asset_id={{ asset.id }}" class="btn btn-sm btn-outline-primary w-100">
-                            <i class="bi bi-plus-circle me-1"></i>Create Ticket
+                        <a href="/repair_request/new?asset_id={{ asset.id }}" class="btn btn-sm btn-outline-warning w-100">
+                            <i class="bi bi-plus-circle me-1"></i>Create Repair Request
                         </a>
                     </div>
                 </div>
