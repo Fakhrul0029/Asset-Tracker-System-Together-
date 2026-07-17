@@ -112,7 +112,6 @@
     </nav>
 
     <div class="container py-4">
-        <!-- Welcome Header -->
         <div class="dashboard-header">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
@@ -131,7 +130,6 @@
             </div>
         </div>
 
-        <!-- Statistics Cards - Main -->
         <div class="row g-4 mb-4">
             <div class="col-md-3">
                 <div class="card stat-card p-4 bg-primary" onclick="window.location.href='/'">
@@ -179,7 +177,6 @@
             </div>
         </div>
 
-        <!-- Repair Request Stats Cards -->
         <div class="row g-4 mb-4">
             <div class="col-md-4">
                 <div class="card stat-card-small p-3 bg-warning text-dark" onclick="window.location.href='/repair_requests'">
@@ -216,7 +213,6 @@
             </div>
         </div>
 
-        <!-- Analytics Charts Section -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="fw-bold mb-0"><i class="bi bi-graph-up me-2"></i>Analytics Overview</h5>
             <a href="/export/analytics_report" class="btn btn-sm btn-outline-primary">
@@ -281,7 +277,6 @@
             </div>
         </div>
 
-        <!-- Recent Activity -->
         <div class="row g-4">
             <div class="col-12">
                 <div class="card chart-card p-4">
@@ -334,7 +329,6 @@
             }
         }, sessionTimeout - warningTime);
 
-        // Chart 1: Assets by Type (Doughnut)
         const typeLabels = {{ type_labels|tojson }};
         const typeData = {{ type_data|tojson }};
         
@@ -365,7 +359,6 @@
             });
         }
 
-        // Chart 2: Assets by Department (Bar)
         const locationLabels = {{ location_labels|tojson }};
         const locationData = {{ location_data|tojson }};
         
@@ -397,7 +390,6 @@
             });
         }
 
-        // Chart 3: Assets by Status (Pie)
         const statusLabels = {{ status_labels|tojson }};
         const statusData = {{ status_data|tojson }};
         
