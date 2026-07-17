@@ -268,6 +268,7 @@ def init_db():
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT TRUE;")
 
@@ -830,6 +831,7 @@ def approve_repair_request(id):
             return redirect(url_for('repair_requests'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
+        # Get the repair request details
         cur.execute("SELECT * FROM repair_requests WHERE id = %s", (id,))
         request_data = cur.fetchone()
         
@@ -839,47 +841,60 @@ def approve_repair_request(id):
             conn.close()
             return redirect(url_for('repair_requests'))
         
+        # Log the raw description for debugging
+        app.logger.info(f"RAW DESCRIPTION: {request_data['issue_description']}")
+        
+        # Parse details from description
         description = request_data['issue_description'] or ''
         lines = description.split('\n') if description else []
         
-        asset_name = 'N/A'
-        asset_serial = 'N/A'
-        asset_type = 'N/A'
-        asset_brand = 'N/A'
-        owner_name = 'N/A'
+        # Default values
+        asset_name = 'Unknown Asset'
+        asset_serial = 'UNKNOWN-SERIAL'
+        asset_type = 'Other'
+        asset_brand = 'Unknown'
+        owner_name = 'Unknown Owner'
         phone_number = 'N/A'
         department = 'Pending Assignment'
         issue = description
         
+        # Parse each line
         for line in lines:
+            line = line.strip()
+            if not line:
+                continue
             if line.startswith('Asset:'):
-                asset_name = line.replace('Asset:', '').strip()
+                asset_name = line.replace('Asset:', '').strip() or 'Unknown Asset'
             elif line.startswith('Brand:'):
-                asset_brand = line.replace('Brand:', '').strip()
+                asset_brand = line.replace('Brand:', '').strip() or 'Unknown'
             elif line.startswith('Type:'):
-                asset_type = line.replace('Type:', '').strip()
+                asset_type = line.replace('Type:', '').strip() or 'Other'
             elif line.startswith('Serial Number:'):
-                asset_serial = line.replace('Serial Number:', '').strip()
+                asset_serial = line.replace('Serial Number:', '').strip() or 'UNKNOWN-SERIAL'
             elif line.startswith('Department:'):
-                department = line.replace('Department:', '').strip()
+                department = line.replace('Department:', '').strip() or 'Pending Assignment'
             elif line.startswith('Owner:'):
-                owner_name = line.replace('Owner:', '').strip()
+                owner_name = line.replace('Owner:', '').strip() or 'Unknown Owner'
             elif line.startswith('Phone:'):
-                phone_number = line.replace('Phone:', '').strip()
+                phone_number = line.replace('Phone:', '').strip() or 'N/A'
             elif line.startswith('Issue:'):
-                issue = line.replace('Issue:', '').strip()
+                issue = line.replace('Issue:', '').strip() or description
         
-        if department == 'N/A' or not department:
-            department = 'Pending Assignment'
+        # Log parsed values for debugging
+        app.logger.info(f"PARSED - Serial: {asset_serial}, Name: {asset_name}, Type: {asset_type}, Brand: {asset_brand}, Owner: {owner_name}, Dept: {department}")
         
+        # Generate tracking number
         tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
-        
-        cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
-        existing_asset = cur.fetchone()
         
         asset_id = None
         
+        # FIRST: Check if asset already exists by serial number
+        cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
+        existing_asset = cur.fetchone()
+        
         if existing_asset:
+            app.logger.info(f"Asset with serial {asset_serial} already exists, updating...")
+            # Update existing asset
             cur.execute("""
                 UPDATE assets SET 
                     status = 'Available',
@@ -888,7 +903,8 @@ def approve_repair_request(id):
                     description = %s,
                     owner_name = %s,
                     asset_type = %s,
-                    cpu_name = %s
+                    cpu_name = %s,
+                    updated_at = NOW()
                 WHERE serial_number = %s
                 RETURNING id
             """, (
@@ -897,29 +913,27 @@ def approve_repair_request(id):
                 f"Repair request approved. Owner: {owner_name}, Issue: {issue}", 
                 owner_name,
                 asset_type,
-                f"{asset_brand} {asset_name}" if asset_brand != 'N/A' else asset_name,
+                f"{asset_brand} {asset_name}" if asset_brand != 'Unknown' else asset_name,
                 asset_serial
             ))
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
-            else:
-                cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
-                row = cur.fetchone()
-                if row:
-                    asset_id = row['id']
+                app.logger.info(f"Updated existing asset ID: {asset_id}")
         else:
+            app.logger.info(f"Creating new asset with serial {asset_serial}...")
+            # Create new asset
             cur.execute("""
                 INSERT INTO assets (
                     asset_type, tracking_number, cpu_name, serial_number,
                     ram_size, storage_type, status, location, description, 
-                    is_deleted, owner_name
-                ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s)
+                    is_deleted, owner_name, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s, NOW())
                 RETURNING id
             """, (
                 asset_type,
                 tracking_number,
-                f"{asset_brand} {asset_name}" if asset_brand != 'N/A' else asset_name,
+                f"{asset_brand} {asset_name}" if asset_brand != 'Unknown' else asset_name,
                 asset_serial,
                 'N/A',
                 'N/A',
@@ -930,35 +944,41 @@ def approve_repair_request(id):
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
+                app.logger.info(f"Created new asset ID: {asset_id}")
         
+        # Update the repair request with the asset_id
         if asset_id:
             cur.execute("""
                 UPDATE repair_requests 
                 SET status = 'Approved', 
                     approved_by = %s, 
-                    approved_date = %s,
-                    updated_at = %s,
+                    approved_date = NOW(),
+                    updated_at = NOW(),
                     asset_id = %s
                 WHERE id = %s
-            """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
+            """, (session.get('full_name'), asset_id, id))
+            app.logger.info(f"Updated repair request {id} with asset_id {asset_id}")
         else:
+            app.logger.error(f"FAILED: No asset_id created for repair request {id}")
             cur.execute("""
                 UPDATE repair_requests 
                 SET status = 'Approved', 
                     approved_by = %s, 
-                    approved_date = %s,
-                    updated_at = %s
+                    approved_date = NOW(),
+                    updated_at = NOW()
                 WHERE id = %s
-            """, (session.get('full_name'), datetime.now(), datetime.now(), id))
+            """, (session.get('full_name'), id))
         
         conn.commit()
         cur.close()
         conn.close()
         
         if asset_id:
-            flash(f"✅ Repair request approved! Asset has been created/updated and is now available in the asset list.")
+            flash(f"✅ Repair request approved! Asset '{asset_name}' (SN: {asset_serial}) has been created with tracking number {tracking_number}.")
+            app.logger.info(f"SUCCESS: Asset {asset_id} created from repair request {id}")
         else:
-            flash(f"⚠️ Repair request approved but asset could not be created. Please check logs.")
+            flash(f"⚠️ Repair request approved but asset could not be created. Please check serial number: {asset_serial}")
+            app.logger.error(f"FAILED: Asset creation failed for serial {asset_serial}")
         
         return redirect(url_for('view_repair_request', id=id))
         
