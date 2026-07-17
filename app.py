@@ -169,7 +169,7 @@ def init_db():
             return
         cur = conn.cursor()
         
-        # Create tables first
+        # Create tables
         cur.execute('''CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             asset_type TEXT,
@@ -189,7 +189,8 @@ def init_db():
             checkout_by TEXT,
             completed_date TIMESTAMP,
             completed_by TEXT,
-            owner_name TEXT
+            owner_name TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -258,7 +259,7 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # Now add ALTER TABLE statements (safe to run after tables exist)
+        # Add ALTER TABLE statements
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;")
@@ -904,6 +905,7 @@ def approve_repair_request(id):
                     owner_name = %s,
                     asset_type = %s,
                     cpu_name = %s,
+                    is_deleted = FALSE,
                     updated_at = NOW()
                 WHERE serial_number = %s
                 RETURNING id
@@ -1323,7 +1325,8 @@ def edit_asset(id):
                 UPDATE assets SET
                     asset_type=%s, tracking_number=%s, cpu_name=%s,
                     ram_size=%s, storage_type=%s, location=%s,
-                    status=%s, description=%s, owner_name=%s
+                    status=%s, description=%s, owner_name=%s,
+                    updated_at=NOW()
                 WHERE id=%s
             """, (
                 request.form.get('asset_type'),
@@ -1504,7 +1507,8 @@ def assign_asset(id):
                 assigned_to = %s,
                 checkout_date = %s,
                 checkout_by = %s,
-                status = 'Assigned'
+                status = 'Assigned',
+                updated_at = NOW()
             WHERE id = %s
         """, (assigned_to_display, datetime.now(), session.get('full_name'), id))
         
@@ -1561,7 +1565,8 @@ def return_asset(id):
                 checkout_by = NULL,
                 status = 'Completed',
                 completed_date = %s,
-                completed_by = %s
+                completed_by = %s,
+                updated_at = NOW()
             WHERE id = %s
         """, (datetime.now(), session.get('full_name'), id))
         
@@ -1599,7 +1604,7 @@ def delete_asset(id):
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
         row = cur.fetchone()
-        cur.execute("UPDATE assets SET is_deleted = TRUE WHERE id = %s", (id,))
+        cur.execute("UPDATE assets SET is_deleted = TRUE, updated_at = NOW() WHERE id = %s", (id,))
         conn.commit()
         cur.close()
         conn.close()
