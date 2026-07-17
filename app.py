@@ -169,7 +169,7 @@ def init_db():
             return
         cur = conn.cursor()
         
-        # Create tables
+        # Create tables first
         cur.execute('''CREATE TABLE IF NOT EXISTS assets (
             id SERIAL PRIMARY KEY,
             asset_type TEXT,
@@ -188,18 +188,9 @@ def init_db():
             checkout_date TIMESTAMP,
             checkout_by TEXT,
             completed_date TIMESTAMP,
-            completed_by TEXT
+            completed_by TEXT,
+            owner_name TEXT
         );''')
-
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
             id SERIAL PRIMARY KEY,
@@ -219,8 +210,6 @@ def init_db():
             role TEXT NOT NULL DEFAULT 'User',
             first_login BOOLEAN DEFAULT TRUE
         );''')
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT TRUE;")
 
         cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
             id SERIAL PRIMARY KEY,
@@ -244,7 +233,6 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # Create repair_requests table
         cur.execute('''CREATE TABLE IF NOT EXISTS repair_requests (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER REFERENCES assets(id),
@@ -269,6 +257,19 @@ def init_db():
             user_email TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
+
+        # Now add ALTER TABLE statements (safe to run after tables exist)
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT TRUE;")
 
         # Create indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
@@ -568,7 +569,6 @@ def repair_requests():
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         if is_admin():
-            # Admin sees ALL requests
             cur.execute("""
                 SELECT r.*, a.tracking_number, a.cpu_name as asset_name, a.serial_number
                 FROM repair_requests r
@@ -584,7 +584,6 @@ def repair_requests():
                     r.created_at DESC
             """)
         else:
-            # User sees ONLY their own requests
             cur.execute("""
                 SELECT r.*, a.tracking_number, a.cpu_name as asset_name, a.serial_number
                 FROM repair_requests r
@@ -606,29 +605,23 @@ def repair_requests():
 
 @app.route('/repair_request/new', methods=['GET', 'POST'])
 def new_repair_request():
-    # Allow public access - no login required
-    
     if request.method == 'POST':
         try:
-            # Owner information
             owner_name = request.form.get('owner_name', '').strip()
             requester_email = request.form.get('requester_email', '').strip()
             phone_number = request.form.get('phone_number', '').strip()
             
-            # Asset information
             asset_name = request.form.get('asset_name', '').strip()
             asset_serial = request.form.get('asset_serial', '').strip()
             asset_type = request.form.get('asset_type', '').strip()
             asset_brand = request.form.get('asset_brand', '').strip()
             department = request.form.get('department', '').strip()
             
-            # Issue & appointment
             issue_description = request.form.get('issue_description', '').strip()
             priority = request.form.get('priority', 'Medium')
             scheduled_send_date = request.form.get('scheduled_send_date', '').strip()
             additional_notes = request.form.get('additional_notes', '').strip()
             
-            # Validation
             if not owner_name:
                 flash("Owner name is required.")
                 return redirect(url_for('new_repair_request'))
@@ -667,10 +660,8 @@ def new_repair_request():
                 return redirect(url_for('new_repair_request'))
             cur = conn.cursor()
             
-            # Generate request number
             request_number = f"REQ-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
             
-            # Combine issue description with all details
             full_description = f"""
 Asset: {asset_name}
 Brand: {asset_brand if asset_brand else 'N/A'}
@@ -710,7 +701,6 @@ Additional Notes: {additional_notes if additional_notes else 'None'}
             flash(f"An error occurred creating the repair request: {str(e)}")
             return redirect(url_for('new_repair_request'))
     
-    # GET request - show form
     return render_template('new_repair_request.html')
 
 
@@ -734,20 +724,18 @@ def view_repair_request(id):
             WHERE r.id = %s
         """, (id,))
         
-        request_data = cur.fetchone()
+        repair_req = cur.fetchone()
         cur.close()
         conn.close()
         
-        if not request_data:
+        if not repair_req:
             flash("Repair request not found.")
             return redirect(url_for('repair_requests'))
         
-        # Check permission - admin can view all, users can only view their own
-        if not is_admin() and request_data['created_by'] != session.get('email'):
+        if not is_admin() and repair_req['created_by'] != session.get('email'):
             flash("You don't have permission to view this request.")
             return redirect(url_for('repair_requests'))
         
-        # Get comments
         conn = get_db_connection()
         if not conn:
             flash("Database connection error.")
@@ -758,7 +746,10 @@ def view_repair_request(id):
         cur.close()
         conn.close()
         
-        return render_template('repair_request_detail.html', request=request_data, comments=comments, is_admin=is_admin())
+        return render_template('repair_request_detail.html', 
+                               repair_req=repair_req, 
+                               comments=comments, 
+                               is_admin=is_admin())
     except Exception as e:
         app.logger.error(f"View repair request error: {e}")
         traceback.print_exc()
@@ -768,7 +759,6 @@ def view_repair_request(id):
 
 @app.route('/repair_requests/track')
 def repair_requests_track():
-    """Public tracking page for repair requests"""
     email = request.args.get('email', '').strip()
     requests = []
     
@@ -840,7 +830,6 @@ def approve_repair_request(id):
             return redirect(url_for('repair_requests'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get the repair request details
         cur.execute("SELECT * FROM repair_requests WHERE id = %s", (id,))
         request_data = cur.fetchone()
         
@@ -850,21 +839,18 @@ def approve_repair_request(id):
             conn.close()
             return redirect(url_for('repair_requests'))
         
-        # Parse the issue_description to extract asset details
-        description = request_data['issue_description']
+        description = request_data['issue_description'] or ''
+        lines = description.split('\n') if description else []
         
-        # Extract asset details from the description
         asset_name = 'N/A'
         asset_serial = 'N/A'
         asset_type = 'N/A'
         asset_brand = 'N/A'
         owner_name = 'N/A'
         phone_number = 'N/A'
-        department = 'N/A'
+        department = 'Pending Assignment'
         issue = description
         
-        # Parse the description
-        lines = description.split('\n') if description else []
         for line in lines:
             if line.startswith('Asset:'):
                 asset_name = line.replace('Asset:', '').strip()
@@ -883,37 +869,53 @@ def approve_repair_request(id):
             elif line.startswith('Issue:'):
                 issue = line.replace('Issue:', '').strip()
         
-        # If no department found, use default
         if department == 'N/A' or not department:
             department = 'Pending Assignment'
         
         tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
         
-        # Check if asset already exists by serial number
         cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
         existing_asset = cur.fetchone()
         
+        asset_id = None
+        
         if existing_asset:
-            # Asset already exists, update it with REP tracking number
             cur.execute("""
                 UPDATE assets SET 
                     status = 'Available',
                     tracking_number = %s,
                     location = %s,
                     description = %s,
-                    owner_name = %s
+                    owner_name = %s,
+                    asset_type = %s,
+                    cpu_name = %s
                 WHERE serial_number = %s
-            """, (tracking_number, department, f"Repair request approved. Owner: {owner_name}, Issue: {issue}", owner_name, asset_serial))
-            asset_created = False
-            asset_id = existing_asset['id']
+                RETURNING id
+            """, (
+                tracking_number, 
+                department, 
+                f"Repair request approved. Owner: {owner_name}, Issue: {issue}", 
+                owner_name,
+                asset_type,
+                f"{asset_brand} {asset_name}" if asset_brand != 'N/A' else asset_name,
+                asset_serial
+            ))
+            row = cur.fetchone()
+            if row:
+                asset_id = row['id']
+            else:
+                cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
+                row = cur.fetchone()
+                if row:
+                    asset_id = row['id']
         else:
-            # Create new asset from the repair request
             cur.execute("""
                 INSERT INTO assets (
                     asset_type, tracking_number, cpu_name, serial_number,
                     ram_size, storage_type, status, location, description, 
                     is_deleted, owner_name
                 ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s)
+                RETURNING id
             """, (
                 asset_type,
                 tracking_number,
@@ -925,13 +927,10 @@ def approve_repair_request(id):
                 f"Repair request approved. Owner: {owner_name}, Phone: {phone_number}, Issue: {issue}",
                 owner_name
             ))
-            asset_created = True
-            # Get the ID of the newly created asset
-            cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
-            new_asset = cur.fetchone()
-            asset_id = new_asset['id'] if new_asset else None
+            row = cur.fetchone()
+            if row:
+                asset_id = row['id']
         
-        # Update the repair request status to Approved and link the asset
         if asset_id:
             cur.execute("""
                 UPDATE repair_requests 
@@ -943,7 +942,6 @@ def approve_repair_request(id):
                 WHERE id = %s
             """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
         else:
-            # Even if asset creation failed, update the status
             cur.execute("""
                 UPDATE repair_requests 
                 SET status = 'Approved', 
@@ -957,18 +955,19 @@ def approve_repair_request(id):
         cur.close()
         conn.close()
         
-        if asset_created:
-            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED AND ASSET CREATED: {asset_serial} ({tracking_number})", asset_serial)
-            flash(f"✅ Repair request approved! Asset {asset_serial} (Tracking: {tracking_number}) has been created and is now available in the asset list.")
+        if asset_id:
+            flash(f"✅ Repair request approved! Asset has been created/updated and is now available in the asset list.")
         else:
-            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Asset {asset_serial} updated with {tracking_number}", asset_serial)
-            flash(f"✅ Repair request approved! Asset {asset_serial} already exists and has been updated with tracking number {tracking_number}.")
+            flash(f"⚠️ Repair request approved but asset could not be created. Please check logs.")
         
         return redirect(url_for('view_repair_request', id=id))
+        
     except Exception as e:
         app.logger.error(f"Approve repair request error: {e}")
-        conn.rollback()
-        flash(f"❌ An error occurred approving the request: {str(e)}")
+        traceback.print_exc()
+        if conn:
+            conn.rollback()
+        flash(f"❌ An error occurred: {str(e)}")
         return redirect(url_for('view_repair_request', id=id))
 
 
@@ -1228,7 +1227,6 @@ def view_asset(id):
         
         maintenance_count = get_maintenance_count(id)
         
-        # Get repair requests for this asset
         cur.execute("""
             SELECT * FROM repair_requests 
             WHERE asset_id = %s 
@@ -1613,11 +1611,9 @@ def activity():
             return redirect(url_for('dashboard'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get activity logs
         cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
         logs = cur.fetchall()
         
-        # Get repair requests for the current user or all if admin
         if is_admin():
             cur.execute("""
                 SELECT r.*, a.tracking_number, a.cpu_name as asset_name
@@ -2321,4 +2317,5 @@ def backup_database():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
