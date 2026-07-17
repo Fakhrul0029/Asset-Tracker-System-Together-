@@ -886,11 +886,11 @@ def approve_repair_request(id):
         if department == 'N/A' or not department:
             department = 'Pending Assignment'
         
+        tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
+        
         # Check if asset already exists by serial number
         cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
         existing_asset = cur.fetchone()
-        
-        tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
         
         if existing_asset:
             # Asset already exists, update it with REP tracking number
@@ -913,7 +913,6 @@ def approve_repair_request(id):
                     ram_size, storage_type, status, location, description, 
                     is_deleted, owner_name
                 ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s)
-                RETURNING id
             """, (
                 asset_type,
                 tracking_number,
@@ -926,18 +925,22 @@ def approve_repair_request(id):
                 owner_name
             ))
             asset_created = True
-            asset_id = cur.fetchone()[0]
+            # Get the ID of the newly created asset
+            cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
+            new_asset = cur.fetchone()
+            asset_id = new_asset['id'] if new_asset else None
         
         # Update the repair request status to Approved and link the asset
-        cur.execute("""
-            UPDATE repair_requests 
-            SET status = 'Approved', 
-                approved_by = %s, 
-                approved_date = %s,
-                updated_at = %s,
-                asset_id = %s
-            WHERE id = %s
-        """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
+        if asset_id:
+            cur.execute("""
+                UPDATE repair_requests 
+                SET status = 'Approved', 
+                    approved_by = %s, 
+                    approved_date = %s,
+                    updated_at = %s,
+                    asset_id = %s
+                WHERE id = %s
+            """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
         
         conn.commit()
         cur.close()
@@ -945,15 +948,16 @@ def approve_repair_request(id):
         
         if asset_created:
             log_activity(session.get('email'), f"REPAIR REQUEST APPROVED AND ASSET CREATED: {asset_serial} ({tracking_number})", asset_serial)
-            flash(f"Repair request approved! Asset {asset_serial} (Tracking: {tracking_number}) has been created and is now available in the asset list.")
+            flash(f"✅ Repair request approved! Asset {asset_serial} (Tracking: {tracking_number}) has been created and is now available in the asset list.")
         else:
             log_activity(session.get('email'), f"REPAIR REQUEST APPROVED: Asset {asset_serial} updated with {tracking_number}", asset_serial)
-            flash(f"Repair request approved! Asset {asset_serial} already exists and has been updated with tracking number {tracking_number}.")
+            flash(f"✅ Repair request approved! Asset {asset_serial} already exists and has been updated with tracking number {tracking_number}.")
         
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
         app.logger.error(f"Approve repair request error: {e}")
-        flash(f"An error occurred approving the request: {str(e)}")
+        conn.rollback()
+        flash(f"❌ An error occurred approving the request: {str(e)}")
         return redirect(url_for('view_repair_request', id=id))
 
 
