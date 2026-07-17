@@ -23,56 +23,20 @@
         .navbar .nav-link:hover, .navbar .nav-link.active { color: #fff !important; background: rgba(255,255,255,0.12); }
         .navbar .nav-link.active { border-bottom: 2px solid var(--gold); }
         .navbar .dropdown-menu { border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); border: none; }
-        .navbar .dropdown-item { padding: 0.5rem 1rem; font-size: 0.9rem; }
-        .navbar .dropdown-item:hover { background: #f0f4ff; }
         .user-badge { background: rgba(255,193,7,0.15); color: var(--gold); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
         .card { border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-radius: 12px; }
         .card-header { background: linear-gradient(135deg, #1a2a6c 0%, #203a43 100%); color: white; border-radius: 12px 12px 0 0 !important; font-weight: 600; }
-        .breadcrumb { background: transparent; padding: 0; }
-        .breadcrumb-item a { color: var(--navy); text-decoration: none; }
-        .breadcrumb-item.active { color: #6c757d; }
         .badge-pending { background-color: #ffc107; color: #212529; }
         .badge-approved { background-color: #28a745; color: white; }
         .badge-sent { background-color: #0d6efd; color: white; }
         .badge-completed { background-color: #6f42c1; color: white; }
         .badge-rejected { background-color: #dc3545; color: white; }
-        .comment-item {
-            border-left: 3px solid var(--navy);
-            padding: 12px 15px;
-            margin-bottom: 10px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        body.dark-mode .comment-item {
-            background: #1e1e3f;
-            border-left-color: var(--gold);
-        }
-        .comment-meta {
-            font-size: 0.8rem;
-            color: #6c757d;
-        }
-        body.dark-mode .comment-meta {
-            color: #999;
-        }
-        .status-history {
-            font-size: 0.9rem;
-        }
-        .status-history .badge {
-            font-size: 0.75rem;
-        }
-        .asset-created-alert {
-            border-left: 4px solid #28a745;
-            background: #e8f5e9;
-            padding: 15px;
-            border-radius: 8px;
-        }
-        body.dark-mode .asset-created-alert {
-            background: #1a3a1a;
-        }
-        .description-text {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
+        .comment-item { border-left: 3px solid var(--navy); padding: 12px 15px; margin-bottom: 10px; background: #f8f9fa; border-radius: 6px; }
+        body.dark-mode .comment-item { background: #1e1e3f; border-left-color: var(--gold); }
+        .comment-meta { font-size: 0.8rem; color: #6c757d; }
+        .description-text { white-space: pre-wrap; word-wrap: break-word; }
+        .asset-created-alert { border-left: 4px solid #28a745; background: #e8f5e9; padding: 15px; border-radius: 8px; }
+        body.dark-mode .asset-created-alert { background: #1a3a1a; }
     </style>
 </head>
 <body>
@@ -145,9 +109,7 @@
                             {% elif repair_req.status == 'Sent' %}badge-sent
                             {% elif repair_req.status == 'Completed' %}badge-completed
                             {% else %}badge-rejected{% endif %} 
-                        ">
-                            {{ repair_req.status }}
-                        </span>
+                        ">{{ repair_req.status }}</span>
                     </div>
                     <div class="card-body">
                         <div class="row">
@@ -229,7 +191,7 @@
                         <hr>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ repair_req.id }}/approve" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/approve">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-success btn-sm w-100" {% if repair_req.status != 'Pending' %}disabled{% endif %}>
                                         <i class="bi bi-check-circle me-1"></i>Approve & Create Asset
@@ -237,7 +199,7 @@
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ repair_req.id }}/reject" class="d-inline" onsubmit="return confirm('Are you sure you want to reject this request?');">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/reject" onsubmit="return confirm('Are you sure you want to reject this request?');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-danger btn-sm w-100" {% if repair_req.status != 'Pending' %}disabled{% endif %}>
                                         <i class="bi bi-x-circle me-1"></i>Reject
@@ -245,7 +207,7 @@
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_sent" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_sent">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-primary btn-sm w-100" {% if repair_req.status != 'Approved' %}disabled{% endif %}>
                                         <i class="bi bi-send me-1"></i>Mark as Sent
@@ -253,7 +215,7 @@
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_completed" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_completed">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                     <button type="submit" class="btn btn-warning btn-sm w-100" {% if repair_req.status != 'Sent' %}disabled{% endif %}>
                                         <i class="bi bi-check2-all me-1"></i>Mark Completed
@@ -315,9 +277,7 @@
                                 {% elif repair_req.status == 'Sent' %}badge-sent
                                 {% elif repair_req.status == 'Completed' %}badge-completed
                                 {% else %}badge-rejected{% endif %} 
-                            ">
-                                {{ repair_req.status }}
-                            </span>
+                            ">{{ repair_req.status }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Priority</span>
@@ -326,40 +286,6 @@
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Created</span>
                             <span>{{ repair_req.created_at.strftime('%Y-%m-%d %H:%M') if repair_req.created_at else '' }}</span>
-                        </div>
-                        {% if repair_req.updated_at and repair_req.updated_at != repair_req.created_at %}
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="text-muted">Updated</span>
-                            <span>{{ repair_req.updated_at.strftime('%Y-%m-%d %H:%M') if repair_req.updated_at else '' }}</span>
-                        </div>
-                        {% endif %}
-                        <hr>
-                        <div class="status-history">
-                            <small class="text-muted">Status History</small>
-                            <div class="mt-2">
-                                <div class="d-flex justify-content-between">
-                                    <span>Created</span>
-                                    <span class="badge badge-pending">Pending</span>
-                                </div>
-                                {% if repair_req.approved_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Approved</span>
-                                    <span class="badge badge-approved">Approved</span>
-                                </div>
-                                {% endif %}
-                                {% if repair_req.sent_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Sent to JTDI</span>
-                                    <span class="badge badge-sent">Sent</span>
-                                </div>
-                                {% endif %}
-                                {% if repair_req.completed_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Completed</span>
-                                    <span class="badge badge-completed">Completed</span>
-                                </div>
-                                {% endif %}
-                            </div>
                         </div>
                         <hr>
                         <a href="/repair_requests" class="btn btn-secondary btn-sm w-100">
