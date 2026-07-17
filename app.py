@@ -305,6 +305,7 @@ def init_db():
         # Add missing columns
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS retired_date TIMESTAMP;")
         cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS retired_by TEXT;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;")
         cur.execute("ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS details TEXT;")
 
         # Create indexes
@@ -820,6 +821,7 @@ def approve_repair_request(id):
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
+                app.logger.info(f"✅ Updated existing asset ID: {asset_id}")
         else:
             # Create new asset
             cur.execute("""
@@ -839,6 +841,7 @@ def approve_repair_request(id):
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
+                app.logger.info(f"✅ Created new asset ID: {asset_id}")
         
         if asset_id:
             # Update repair request
@@ -857,8 +860,10 @@ def approve_repair_request(id):
                         f"Request #{request_data['request_number']}")
             
             flash(f"✅ Repair request approved! Asset created with tracking number {tracking_number}.")
+            app.logger.info(f"✅ SUCCESS: Asset {asset_id} created from repair request {id}")
         else:
             flash(f"❌ Failed to create asset. Please check the serial number: {asset_serial}")
+            app.logger.error(f"❌ FAILED: Asset creation failed for serial {asset_serial}")
         
         cur.close()
         conn.close()
