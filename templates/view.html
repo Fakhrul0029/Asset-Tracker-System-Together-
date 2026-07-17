@@ -46,17 +46,6 @@
             background: linear-gradient(135deg, #3a2a0a, #4a3a1a);
             border-left-color: #ffc107;
         }
-        .retired-banner {
-            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
-            border-left: 5px solid #6c757d;
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-        body.dark-mode .retired-banner {
-            background: linear-gradient(135deg, #2a2a2a, #3a3a3a);
-            border-left-color: #6c757d;
-        }
         .bg-purple { background-color: #6f42c1; color: white; }
         .timestamp-text { font-size: 0.85rem; color: #6c757d; }
         body.dark-mode .timestamp-text { color: #999; }
@@ -106,23 +95,6 @@
         body.dark-mode .log-user {
             color: #999;
         }
-        .repair-request-item {
-            border-left: 3px solid #ffc107;
-            padding: 10px 15px;
-            margin-bottom: 8px;
-            background: #f8f9fa;
-            border-radius: 6px;
-        }
-        body.dark-mode .repair-request-item {
-            background: #1e1e3f;
-        }
-        .badge-pending { background-color: #ffc107; color: #212529; }
-        .badge-approved { background-color: #28a745; color: white; }
-        .badge-sent { background-color: #0d6efd; color: white; }
-        .badge-completed { background-color: #6f42c1; color: white; }
-        .badge-rejected { background-color: #dc3545; color: white; }
-        .btn-retire { background-color: #6c757d; border-color: #6c757d; color: white; }
-        .btn-retire:hover { background-color: #5a6268; border-color: #545b62; color: white; }
     </style>
 </head>
 <body>
@@ -144,9 +116,6 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -193,26 +162,8 @@
                             <i class="bi bi-tools me-1"></i>Waiting Parts
                         </span>
                         {% endif %}
-                        {% if asset.status == 'Retired' %}
-                        <span class="badge bg-secondary float-end">
-                            <i class="bi bi-archive me-1"></i>Retired
-                        </span>
-                        {% endif %}
                     </div>
                     <div class="card-body">
-                        <!-- Retired Banner -->
-                        {% if asset.status == 'Retired' %}
-                        <div class="retired-banner">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="mb-1"><i class="bi bi-archive text-secondary me-2"></i>This asset has been retired</h6>
-                                    <p class="mb-0 small">Retired on: {{ asset.retired_date.strftime('%Y-%m-%d %H:%M') if asset.retired_date else 'N/A' }}</p>
-                                    <p class="mb-0 small">Retired by: {{ asset.retired_by or 'Unknown' }}</p>
-                                </div>
-                            </div>
-                        </div>
-                        {% endif %}
-
                         <!-- Parts Request Banner -->
                         {% if asset.status == 'Waiting Parts' %}
                         <div class="repair-banner">
@@ -273,7 +224,6 @@
                                         {% elif asset.status == 'In Repair' %}bg-warning text-dark
                                         {% elif asset.status == 'Waiting Parts' %}bg-warning text-dark
                                         {% elif asset.status == 'Beyond Repair' %}bg-danger
-                                        {% elif asset.status == 'Retired' %}bg-secondary
                                         {% else %}bg-secondary{% endif %} 
                                     ">
                                         {{ asset.status }}
@@ -302,40 +252,13 @@
                                 <span class="info-label">Scan Count:</span>
                                 <p>{{ asset.scan_count or 0 }}</p>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <span class="info-label">Maintenance Cases:</span>
-                                <p>
-                                    <span class="badge {% if maintenance_count > 5 %}bg-danger{% elif maintenance_count > 2 %}bg-warning text-dark{% else %}bg-success{% endif %} maintenance-count-badge">
-                                        {{ maintenance_count }}
-                                    </span>
-                                    {% if maintenance_count > 5 %}
-                                    <span class="text-danger small ms-1">⚠️ High maintenance</span>
-                                    {% elif maintenance_count > 2 %}
-                                    <span class="text-warning small ms-1">⚠️ Moderate maintenance</span>
-                                    {% endif %}
-                                </p>
-                            </div>
-                        </div>
-                        {% if asset.completed_date %}
-                        <div class="row">
+                            {% if asset.completed_date %}
                             <div class="col-md-6 mb-3">
                                 <span class="info-label">Completed Date:</span>
                                 <p class="timestamp-text">{{ asset.completed_date.strftime('%Y-%m-%d %H:%M') if asset.completed_date else '-' }}</p>
                             </div>
+                            {% endif %}
                         </div>
-                        {% endif %}
-                        {% if asset.retired_date %}
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <span class="info-label">Retired Date:</span>
-                                <p class="timestamp-text">{{ asset.retired_date.strftime('%Y-%m-%d %H:%M') if asset.retired_date else '-' }}</p>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <span class="info-label">Retired By:</span>
-                                <p>{{ asset.retired_by or '-' }}</p>
-                            </div>
-                        </div>
-                        {% endif %}
                         <div class="mb-3">
                             <span class="info-label">Description:</span>
                             <p>{{ asset.description or '-' }}</p>
@@ -346,34 +269,20 @@
                         </div>
 
                         <hr>
-                        <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ url_for('edit_asset', id=asset.id) }}" class="btn btn-primary">
-                                <i class="bi bi-pencil-square me-1"></i>{% if session.role == 'Admin' %}Edit Asset{% else %}Update Status{% endif %}
-                            </a>
-                            <a href="{{ url_for('index') }}" class="btn btn-secondary">
-                                <i class="bi bi-arrow-left me-1"></i>Back to Assets
-                            </a>
-                            <a href="/repair_request/new?asset_id={{ asset.id }}" class="btn btn-outline-warning">
-                                <i class="bi bi-tools me-1"></i>Create Repair Request
-                            </a>
-                            {% if session.role == 'Admin' and asset.status != 'Retired' and not asset.is_deleted %}
-                                <form action="/retire/{{ asset.id }}" method="POST" style="display: inline-block;" onsubmit="return confirm('Retire this asset? This action will mark it as retired.');">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="btn btn-retire">
-                                        <i class="bi bi-archive me-1"></i>Retire Asset
-                                    </button>
-                                </form>
-                            {% endif %}
-                        </div>
+                        <a href="{{ url_for('edit_asset', id=asset.id) }}" class="btn btn-primary">
+                            <i class="bi bi-pencil-square me-1"></i>{% if session.role == 'Admin' %}Edit Asset{% else %}Update Status{% endif %}
+                        </a>
+                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left me-1"></i>Back to Assets
+                        </a>
                     </div>
                 </div>
             </div>
 
             <div class="col-lg-4">
-                <!-- Maintenance History -->
                 <div class="card mb-4">
                     <div class="card-header">
-                        <i class="bi bi-clock-history me-2"></i>Maintenance History ({{ logs|length }})
+                        <i class="bi bi-clock-history me-2"></i>Maintenance History
                     </div>
                     <div class="card-body">
                         {% if logs %}
@@ -405,42 +314,8 @@
                     </div>
                 </div>
 
-                <!-- Repair Requests Section -->
-                <div class="card">
-                    <div class="card-header">
-                        <i class="bi bi-tools me-2"></i>Repair Requests ({{ repair_requests|length }})
-                    </div>
-                    <div class="card-body">
-                        {% if repair_requests %}
-                            {% for req in repair_requests %}
-                            <div class="repair-request-item">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <a href="/repair_request/{{ req.id }}" class="fw-bold">{{ req.request_number }}</a>
-                                    <span class="badge 
-                                        {% if req.status == 'Pending' %}badge-pending
-                                        {% elif req.status == 'Approved' %}badge-approved
-                                        {% elif req.status == 'Sent' %}badge-sent
-                                        {% elif req.status == 'Completed' %}badge-completed
-                                        {% else %}badge-rejected{% endif %} 
-                                    ">
-                                        {{ req.status }}
-                                    </span>
-                                </div>
-                                <small class="text-muted">{{ req.issue_description[:100] }}{% if req.issue_description|length > 100 %}...{% endif %}</small>
-                                <br><small class="text-muted">{{ req.created_at.strftime('%Y-%m-%d') if req.created_at else '' }}</small>
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <p class="text-muted text-center py-2">No repair requests for this asset.</p>
-                        {% endif %}
-                        <a href="/repair_request/new?asset_id={{ asset.id }}" class="btn btn-sm btn-outline-warning w-100">
-                            <i class="bi bi-plus-circle me-1"></i>Create Repair Request
-                        </a>
-                    </div>
-                </div>
-
                 {% if asset.status == 'Waiting Parts' %}
-                <div class="card border-warning mt-4">
+                <div class="card border-warning">
                     <div class="card-header bg-warning text-dark">
                         <i class="bi bi-tools me-2"></i>Parts Request
                     </div>
