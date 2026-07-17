@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repair Request #{{ request.request_number }} - JTDI Asset Tracker</title>
+    <title>Repair Request #{{ repair_req.request_number }} - JTDI Asset Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -115,7 +115,7 @@
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a></li>
-                <li class="breadcrumb-item active">{{ request.request_number }}</li>
+                <li class="breadcrumb-item active">{{ repair_req.request_number }}</li>
             </ol>
         </nav>
 
@@ -134,87 +134,87 @@
             <div class="col-lg-8">
                 <div class="card mb-4">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-tools me-2"></i>{{ request.request_number }}</span>
+                        <span><i class="bi bi-tools me-2"></i>{{ repair_req.request_number }}</span>
                         <span class="badge 
-                            {% if request.status == 'Pending' %}badge-pending
-                            {% elif request.status == 'Approved' %}badge-approved
-                            {% elif request.status == 'Sent' %}badge-sent
-                            {% elif request.status == 'Completed' %}badge-completed
+                            {% if repair_req.status == 'Pending' %}badge-pending
+                            {% elif repair_req.status == 'Approved' %}badge-approved
+                            {% elif repair_req.status == 'Sent' %}badge-sent
+                            {% elif repair_req.status == 'Completed' %}badge-completed
                             {% else %}badge-rejected{% endif %} 
                         ">
-                            {{ request.status }}
+                            {{ repair_req.status }}
                         </span>
                     </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-12">
                                 <h6>Issue Description</h6>
-                                <p class="text-muted">{{ request.issue_description|linebreaks }}</p>
+                                <p class="text-muted">{{ repair_req.issue_description|linebreaks }}</p>
                             </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Requested By</small>
-                                <p>{{ request.created_by }}</p>
+                                <p>{{ repair_req.created_by }}</p>
                             </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Created At</small>
-                                <p>{{ request.created_at.strftime('%Y-%m-%d %H:%M') if request.created_at else '' }}</p>
+                                <p>{{ repair_req.created_at.strftime('%Y-%m-%d %H:%M') if repair_req.created_at else '' }}</p>
                             </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Priority</small>
-                                <p><span class="badge bg-secondary">{{ request.priority }}</span></p>
+                                <p><span class="badge bg-secondary">{{ repair_req.priority }}</span></p>
                             </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Asset</small>
                                 <p>
-                                    {% if request.asset_name %}
-                                        <a href="/view/{{ request.asset_id }}">{{ request.asset_name }} ({{ request.tracking_number }})</a>
+                                    {% if repair_req.asset_name %}
+                                        <a href="/view/{{ repair_req.asset_id }}">{{ repair_req.asset_name }} ({{ repair_req.tracking_number }})</a>
                                     {% else %}
                                         No Asset Selected
                                     {% endif %}
                                 </p>
                             </div>
-                            {% if request.scheduled_send_date %}
+                            {% if repair_req.scheduled_send_date %}
                             <div class="col-md-6">
                                 <small class="text-muted">Scheduled Send Date</small>
-                                <p>{{ request.scheduled_send_date.strftime('%Y-%m-%d') if request.scheduled_send_date else '' }}</p>
+                                <p>{{ repair_req.scheduled_send_date.strftime('%Y-%m-%d') if repair_req.scheduled_send_date else '' }}</p>
                             </div>
                             {% endif %}
-                            {% if request.approved_by %}
+                            {% if repair_req.approved_by %}
                             <div class="col-md-6">
                                 <small class="text-muted">Approved By</small>
-                                <p>{{ request.approved_by }}</p>
+                                <p>{{ repair_req.approved_by }}</p>
                             </div>
                             {% endif %}
-                            {% if request.approved_date %}
+                            {% if repair_req.approved_date %}
                             <div class="col-md-6">
                                 <small class="text-muted">Approved Date</small>
-                                <p>{{ request.approved_date.strftime('%Y-%m-%d %H:%M') if request.approved_date else '' }}</p>
+                                <p>{{ repair_req.approved_date.strftime('%Y-%m-%d %H:%M') if repair_req.approved_date else '' }}</p>
                             </div>
                             {% endif %}
-                            {% if request.sent_date %}
+                            {% if repair_req.sent_date %}
                             <div class="col-md-6">
                                 <small class="text-muted">Sent to JTDI Date</small>
-                                <p>{{ request.sent_date.strftime('%Y-%m-%d %H:%M') if request.sent_date else '' }}</p>
+                                <p>{{ repair_req.sent_date.strftime('%Y-%m-%d %H:%M') if repair_req.sent_date else '' }}</p>
                             </div>
                             {% endif %}
-                            {% if request.completed_date %}
+                            {% if repair_req.completed_date %}
                             <div class="col-md-6">
                                 <small class="text-muted">Completed Date</small>
-                                <p>{{ request.completed_date.strftime('%Y-%m-%d %H:%M') if request.completed_date else '' }}</p>
+                                <p>{{ repair_req.completed_date.strftime('%Y-%m-%d %H:%M') if repair_req.completed_date else '' }}</p>
                             </div>
                             {% endif %}
                         </div>
 
                         <!-- Asset Created Success Message -->
-                        {% if request.status == 'Approved' and request.asset_id %}
+                        {% if repair_req.status == 'Approved' and repair_req.asset_id %}
                         <div class="asset-created-alert mt-3">
                             <div class="d-flex align-items-start">
                                 <i class="bi bi-check-circle-fill text-success me-2 fs-4"></i>
                                 <div>
                                     <strong>Asset Created Successfully!</strong>
                                     <br>The asset has been added to the system with tracking number 
-                                    <strong>{{ request.tracking_number }}</strong>.
-                                    <a href="/view/{{ request.asset_id }}">View Asset</a>
+                                    <strong>{{ repair_req.tracking_number }}</strong>.
+                                    <a href="/view/{{ repair_req.asset_id }}">View Asset</a>
                                 </div>
                             </div>
                         </div>
@@ -225,33 +225,33 @@
                         <hr>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ request.id }}/approve" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/approve" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="btn btn-success btn-sm w-100" {% if request.status != 'Pending' %}disabled{% endif %}>
+                                    <button type="submit" class="btn btn-success btn-sm w-100" {% if repair_req.status != 'Pending' %}disabled{% endif %}>
                                         <i class="bi bi-check-circle me-1"></i>Approve & Create Asset
                                     </button>
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ request.id }}/reject" class="d-inline" onsubmit="return confirm('Are you sure you want to reject this request?');">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/reject" class="d-inline" onsubmit="return confirm('Are you sure you want to reject this request?');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="btn btn-danger btn-sm w-100" {% if request.status != 'Pending' %}disabled{% endif %}>
+                                    <button type="submit" class="btn btn-danger btn-sm w-100" {% if repair_req.status != 'Pending' %}disabled{% endif %}>
                                         <i class="bi bi-x-circle me-1"></i>Reject
                                     </button>
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ request.id }}/mark_sent" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_sent" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="btn btn-primary btn-sm w-100" {% if request.status != 'Approved' %}disabled{% endif %}>
+                                    <button type="submit" class="btn btn-primary btn-sm w-100" {% if repair_req.status != 'Approved' %}disabled{% endif %}>
                                         <i class="bi bi-send me-1"></i>Mark as Sent
                                     </button>
                                 </form>
                             </div>
                             <div class="col-md-6">
-                                <form method="POST" action="/repair_request/{{ request.id }}/mark_completed" class="d-inline">
+                                <form method="POST" action="/repair_request/{{ repair_req.id }}/mark_completed" class="d-inline">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                    <button type="submit" class="btn btn-warning btn-sm w-100" {% if request.status != 'Sent' %}disabled{% endif %}>
+                                    <button type="submit" class="btn btn-warning btn-sm w-100" {% if repair_req.status != 'Sent' %}disabled{% endif %}>
                                         <i class="bi bi-check2-all me-1"></i>Mark Completed
                                     </button>
                                 </form>
@@ -283,7 +283,7 @@
                         {% endif %}
 
                         <hr>
-                        <form method="POST" action="/repair_request/{{ request.id }}/comment">
+                        <form method="POST" action="/repair_request/{{ repair_req.id }}/comment">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <div class="mb-2">
                                 <label for="comment" class="form-label">Add Comment</label>
@@ -306,33 +306,27 @@
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Status</span>
                             <span class="badge 
-                                {% if request.status == 'Pending' %}badge-pending
-                                {% elif request.status == 'Approved' %}badge-approved
-                                {% elif request.status == 'Sent' %}badge-sent
-                                {% elif request.status == 'Completed' %}badge-completed
+                                {% if repair_req.status == 'Pending' %}badge-pending
+                                {% elif repair_req.status == 'Approved' %}badge-approved
+                                {% elif repair_req.status == 'Sent' %}badge-sent
+                                {% elif repair_req.status == 'Completed' %}badge-completed
                                 {% else %}badge-rejected{% endif %} 
                             ">
-                                {{ request.status }}
+                                {{ repair_req.status }}
                             </span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Priority</span>
-                            <span>{{ request.priority }}</span>
+                            <span>{{ repair_req.priority }}</span>
                         </div>
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Created</span>
-                            <span>{{ request.created_at.strftime('%Y-%m-%d %H:%M') if request.created_at else '' }}</span>
+                            <span>{{ repair_req.created_at.strftime('%Y-%m-%d %H:%M') if repair_req.created_at else '' }}</span>
                         </div>
-                        {% if request.updated_at and request.updated_at != request.created_at %}
+                        {% if repair_req.updated_at and repair_req.updated_at != repair_req.created_at %}
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Updated</span>
-                            <span>{{ request.updated_at.strftime('%Y-%m-%d %H:%M') if request.updated_at else '' }}</span>
-                        </div>
-                        {% endif %}
-                        {% if request.closed_at %}
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="text-muted">Closed</span>
-                            <span>{{ request.closed_at.strftime('%Y-%m-%d %H:%M') if request.closed_at else '' }}</span>
+                            <span>{{ repair_req.updated_at.strftime('%Y-%m-%d %H:%M') if repair_req.updated_at else '' }}</span>
                         </div>
                         {% endif %}
                         <hr>
@@ -343,19 +337,19 @@
                                     <span>Created</span>
                                     <span class="badge badge-pending">Pending</span>
                                 </div>
-                                {% if request.approved_date %}
+                                {% if repair_req.approved_date %}
                                 <div class="d-flex justify-content-between mt-1">
                                     <span>Approved</span>
                                     <span class="badge badge-approved">Approved</span>
                                 </div>
                                 {% endif %}
-                                {% if request.sent_date %}
+                                {% if repair_req.sent_date %}
                                 <div class="d-flex justify-content-between mt-1">
                                     <span>Sent to JTDI</span>
                                     <span class="badge badge-sent">Sent</span>
                                 </div>
                                 {% endif %}
-                                {% if request.completed_date %}
+                                {% if repair_req.completed_date %}
                                 <div class="d-flex justify-content-between mt-1">
                                     <span>Completed</span>
                                     <span class="badge badge-completed">Completed</span>
@@ -367,8 +361,8 @@
                         <a href="/repair_requests" class="btn btn-secondary btn-sm w-100">
                             <i class="bi bi-arrow-left me-1"></i>Back to Requests
                         </a>
-                        {% if request.asset_id %}
-                        <a href="/view/{{ request.asset_id }}" class="btn btn-outline-primary btn-sm w-100 mt-2">
+                        {% if repair_req.asset_id %}
+                        <a href="/view/{{ repair_req.asset_id }}" class="btn btn-outline-primary btn-sm w-100 mt-2">
                             <i class="bi bi-box me-1"></i>View Asset
                         </a>
                         {% endif %}
