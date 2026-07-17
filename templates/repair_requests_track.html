@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Track Repair Appointment - JTDI Asset Tracker</title>
+    <title>Track Repair Request - JTDI Asset Tracker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -34,7 +34,7 @@
         .badge-sent { background-color: #0d6efd; color: white; }
         .badge-completed { background-color: #6f42c1; color: white; }
         .badge-rejected { background-color: #dc3545; color: white; }
-        .appointment-card {
+        .request-card {
             border-left: 4px solid #1a2a6c;
             padding: 15px;
             margin-bottom: 15px;
@@ -46,7 +46,7 @@
         .status-sent { border-left-color: #0d6efd !important; }
         .status-completed { border-left-color: #6f42c1 !important; }
         .status-rejected { border-left-color: #dc3545 !important; }
-        .appointment-timestamp {
+        .request-timestamp {
             font-size: 0.75rem;
             color: #6c757d;
         }
@@ -57,9 +57,6 @@
         .login-link:hover {
             text-decoration: underline;
         }
-        .asset-detail {
-            font-size: 0.9rem;
-        }
     </style>
 </head>
 <body>
@@ -68,8 +65,8 @@
             <div class="col-lg-8">
                 <div class="card">
                     <div class="card-header text-center py-3">
-                        <h4><i class="bi bi-search me-2"></i>Track Your Repair Appointment</h4>
-                        <p class="mb-0 opacity-75">Enter your email to check the status of your repair appointments</p>
+                        <h4><i class="bi bi-search me-2"></i>Track Your Repair Request</h4>
+                        <p class="mb-0 opacity-75">Enter your email to check the status of your repair requests</p>
                     </div>
                     <div class="card-body p-4">
                         <form method="GET" action="{{ url_for('repair_requests_track') }}" class="mb-4">
@@ -83,10 +80,10 @@
                         </form>
 
                         {% if email %}
-                            <h6 class="mb-3">Appointments for <strong>{{ email }}</strong>:</h6>
+                            <h6 class="mb-3">Requests for <strong>{{ email }}</strong>:</h6>
                             {% if requests %}
                                 {% for req in requests %}
-                                <div class="appointment-card status-{{ req.status|lower }}">
+                                <div class="request-card status-{{ req.status|lower }}">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
                                             <strong>{{ req.request_number }}</strong>
@@ -98,43 +95,11 @@
                                                 {% else %}badge-rejected{% endif %} 
                                             ms-2">{{ req.status }}</span>
                                         </div>
-                                        <span class="appointment-timestamp">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '' }}</span>
+                                        <span class="request-timestamp">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '' }}</span>
                                     </div>
-                                    
-                                    <div class="mt-2 asset-detail">
-                                        <strong>Asset:</strong> 
-                                        {% set lines = req.issue_description.split('\n') if req.issue_description else [] %}
-                                        {% for line in lines %}
-                                            {% if 'Asset:' in line %}
-                                                {{ line.replace('Asset:', '').strip() }}
-                                            {% endif %}
-                                        {% endfor %}
+                                    <div class="mt-2">
+                                        <strong>Issue:</strong> {{ req.issue_description[:150] }}{% if req.issue_description|length > 150 %}...{% endif %}
                                     </div>
-                                    <div class="asset-detail">
-                                        <strong>Serial:</strong> 
-                                        {% for line in lines %}
-                                            {% if 'Serial Number:' in line %}
-                                                {{ line.replace('Serial Number:', '').strip() }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </div>
-                                    <div class="asset-detail">
-                                        <strong>Type:</strong> 
-                                        {% for line in lines %}
-                                            {% if 'Type:' in line %}
-                                                {{ line.replace('Type:', '').strip() }}
-                                            {% endif %}
-                                        {% endfor %}
-                                    </div>
-                                    
-                                    <div class="mt-1">
-                                        <strong>Issue:</strong> 
-                                        {% set issue_lines = req.issue_description.split('Issue:') if req.issue_description else [] %}
-                                        {% if issue_lines|length > 1 %}
-                                            {{ issue_lines[1].split('Additional Notes:')[0].strip()[:100] }}{% if issue_lines[1]|length > 100 %}...{% endif %}
-                                        {% endif %}
-                                    </div>
-                                    
                                     {% if req.scheduled_send_date %}
                                     <div class="mt-1">
                                         <small class="text-muted"><i class="bi bi-calendar me-1"></i>Scheduled Send: {{ req.scheduled_send_date.strftime('%Y-%m-%d') if req.scheduled_send_date else '' }}</small>
@@ -163,7 +128,7 @@
                             {% else %}
                                 <div class="alert alert-info">
                                     <i class="bi bi-info-circle me-2"></i>
-                                    No repair appointments found for <strong>{{ email }}</strong>.
+                                    No repair requests found for <strong>{{ email }}</strong>.
                                 </div>
                             {% endif %}
                         {% endif %}
@@ -171,7 +136,7 @@
                         <hr>
                         <div class="text-center">
                             <a href="{{ url_for('new_repair_request') }}" class="btn btn-warning">
-                                <i class="bi bi-calendar-plus me-1"></i>Schedule New Appointment
+                                <i class="bi bi-plus-circle me-1"></i>Submit New Repair Request
                             </a>
                             <a href="{{ url_for('login') }}" class="btn btn-outline-secondary ms-2">
                                 <i class="bi bi-box-arrow-in-right me-1"></i>Login
