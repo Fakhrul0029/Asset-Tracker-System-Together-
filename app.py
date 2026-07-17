@@ -8,13 +8,13 @@ import string
 import qrcode
 import psycopg2
 import psycopg2.extras
-import psycopg2.pool
 import pandas as pd
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_file, Response
 from flask_wtf.csrf import CSRFProtect
 from datetime import datetime, timedelta
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'jtdi_secure_master_2026')
@@ -28,16 +28,14 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 if not os.path.exists('logs'):
     os.makedirs('logs')
 file_handler = logging.handlers.RotatingFileHandler('logs/app.log', maxBytes=10240, backupCount=10)
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s %(levelname)s: %(message)s'
-))
+file_handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s: %(message)s'))
 file_handler.setLevel(logging.INFO)
 app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
-app.logger.info('Asset Tracker startup')
 
 login_attempts = {}
 
+# ==================== HELPER FUNCTIONS ====================
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -51,10 +49,26 @@ def get_db_connection():
         app.logger.error(f"DB Connection Error: {e}")
         return None
 
-
 def is_admin():
     return session.get('role') == 'Admin'
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            flash('Please login to access this page.')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session or not is_admin():
+            flash('Admin access required.')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def validate_password_complexity(password):
     if len(password) < 8:
@@ -67,11 +81,9 @@ def validate_password_complexity(password):
         return False, "Password must contain at least one digit"
     return True, "Password is valid"
 
-
 def generate_temp_password():
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(10))
-
 
 def check_rate_limit(email):
     now = datetime.now()
@@ -85,23 +97,21 @@ def check_rate_limit(email):
         login_attempts[email] = []
     return True, None
 
-
-def log_activity(user_label, action, asset_serial=None):
+def log_activity(user_label, action, asset_serial=None, details=None):
     try:
         conn = get_db_connection()
         if not conn:
             return
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO activity_logs (user_email, action, asset_serial) VALUES (%s,%s,%s)",
-            (user_label, action, asset_serial)
+            "INSERT INTO activity_logs (user_email, action, asset_serial, details) VALUES (%s,%s,%s,%s)",
+            (user_label, action, asset_serial, details)
         )
         conn.commit()
         cur.close()
         conn.close()
     except Exception as e:
         app.logger.error(f"ACTIVITY LOG ERROR: {e}")
-
 
 def log_access(email, action):
     try:
@@ -119,7 +129,6 @@ def log_access(email, action):
     except Exception as e:
         app.logger.error(f"ACCESS LOG ERROR: {e}")
 
-
 def get_maintenance_count(asset_id):
     try:
         conn = get_db_connection()
@@ -135,6 +144,37 @@ def get_maintenance_count(asset_id):
         app.logger.error(f"Maintenance count error: {e}")
         return 0
 
+def get_asset_stats():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return {'total': 0, 'available': 0, 'assigned': 0, 'in_repair': 0, 'completed': 0, 'retired': 0}
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE")
+        total = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE")
+        available = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE")
+        assigned = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE")
+        in_repair = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Completed' AND is_deleted = FALSE")
+        completed = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM assets WHERE status = 'Retired' AND is_deleted = FALSE")
+        retired = cur.fetchone()['count']
+        cur.close()
+        conn.close()
+        return {
+            'total': total,
+            'available': available,
+            'assigned': assigned,
+            'in_repair': in_repair,
+            'completed': completed,
+            'retired': retired
+        }
+    except Exception as e:
+        app.logger.error(f"Asset stats error: {e}")
+        return {'total': 0, 'available': 0, 'assigned': 0, 'in_repair': 0, 'completed': 0, 'retired': 0}
 
 def ensure_bootstrap_admin():
     if not DATABASE_URL:
@@ -158,7 +198,6 @@ def ensure_bootstrap_admin():
     except Exception as e:
         app.logger.error(f"Bootstrap admin error: {e}")
 
-
 def init_db():
     if not DATABASE_URL:
         return
@@ -179,18 +218,20 @@ def init_db():
             ram_size TEXT,
             storage_type TEXT,
             location TEXT,
-            status TEXT,
+            status TEXT DEFAULT 'Available',
             description TEXT,
             is_deleted BOOLEAN DEFAULT FALSE,
             scan_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             assigned_to TEXT,
             checkout_date TIMESTAMP,
             checkout_by TEXT,
             completed_date TIMESTAMP,
             completed_by TEXT,
             owner_name TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            retired_date TIMESTAMP,
+            retired_by TEXT
         );''')
 
         cur.execute('''CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -209,7 +250,8 @@ def init_db():
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT 'User',
-            first_login BOOLEAN DEFAULT TRUE
+            first_login BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
         cur.execute('''CREATE TABLE IF NOT EXISTS login_logs (
@@ -224,6 +266,7 @@ def init_db():
             user_email TEXT,
             action TEXT,
             asset_serial TEXT,
+            details TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
@@ -259,19 +302,10 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
-        # Add ALTER TABLE statements
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS description TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS scan_count INTEGER DEFAULT 0;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT FALSE;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS assigned_to TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_date TIMESTAMP;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS checkout_by TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS owner_name TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_date TIMESTAMP;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS completed_by TEXT;")
-        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT;")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS first_login BOOLEAN DEFAULT TRUE;")
+        # Add missing columns
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS retired_date TIMESTAMP;")
+        cur.execute("ALTER TABLE assets ADD COLUMN IF NOT EXISTS retired_by TEXT;")
+        cur.execute("ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS details TEXT;")
 
         # Create indexes
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_serial ON assets(serial_number);")
@@ -282,11 +316,8 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_deleted ON assets(is_deleted);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_assigned ON assets(assigned_to);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_assets_created ON assets(created_at);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_logs(created_at);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_login_time ON login_logs(login_time);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_asset ON repair_requests(asset_id);")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_status ON repair_requests(status);")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_repair_created ON repair_requests(created_at);")
 
         conn.commit()
         cur.close()
@@ -295,7 +326,6 @@ def init_db():
     except Exception as e:
         app.logger.error(f"INIT DB ERROR: {e}")
         traceback.print_exc()
-
 
 # Initialize on startup
 try:
@@ -306,12 +336,11 @@ except Exception as e:
     app.logger.error(f"Startup error: {e}")
     traceback.print_exc()
 
+# ==================== ROUTES ====================
 
 @app.route('/')
+@login_required
 def index():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
     try:
         s = request.args.get('search', '').strip()
         c = request.args.get('category', '').strip()
@@ -390,12 +419,7 @@ def index():
             users_list = cur.fetchall()
             users = [{'email': u['email'], 'full_name': u['full_name'], 'username': u['username']} for u in users_list]
 
-        stats = {
-            'total': total,
-            'available': len([r for r in data if r['status'] == 'Available']),
-            'assigned': len([r for r in data if r['status'] == 'Assigned']),
-            'in_repair': len([r for r in data if r['status'] == 'In Repair'])
-        }
+        stats = get_asset_stats()
         
         total_pages = (total + per_page - 1) // per_page
         cur.close()
@@ -422,116 +446,57 @@ def index():
         app.logger.error(f"Index error: {e}")
         traceback.print_exc()
         flash("An error occurred loading assets.")
-        return render_template('assets.html', 
-                             data=[], 
-                             total=0, 
-                             available=0, 
-                             assigned=0, 
-                             in_repair=0,
-                             s_query='', 
-                             c_filter='',
-                             sort='id', 
-                             order='desc', 
-                             page=1, 
-                             total_pages=0, 
-                             per_page=20, 
-                             users=[], 
-                             serial_search='', 
-                             date_from='', 
-                             date_to='')
-
+        return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
             flash("Database connection error.")
-            return render_template('dashboard.html', total=0, available=0, assigned=0, in_repair=0,
-                                 recent_activity=[], type_labels=[], type_data=[],
-                                 location_labels=[], location_data=[], status_labels=[], status_data=[],
-                                 date_filter='all', start_date='', end_date='')
+            return render_template('dashboard.html', stats={}, recent_activity=[], 
+                                 type_labels=[], type_data=[], location_labels=[], location_data=[])
         
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-
-        user_role = session.get('role')
-        user_email = session.get('email')
         
-        date_filter = request.args.get('date_filter', 'all')
-        start_date = request.args.get('start_date', '')
-        end_date = request.args.get('end_date', '')
+        stats = get_asset_stats()
         
-        date_condition = "1=1"
-        params = []
+        # Asset by type
+        cur.execute("""
+            SELECT asset_type, COUNT(*) as count 
+            FROM assets 
+            WHERE is_deleted = FALSE AND asset_type IS NOT NULL 
+            GROUP BY asset_type 
+            ORDER BY count DESC
+        """)
+        by_type = cur.fetchall()
         
-        if date_filter == 'monthly':
-            date_condition = "DATE(created_at) >= DATE_TRUNC('month', CURRENT_DATE) AND DATE(created_at) < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'"
-        elif date_filter == 'custom' and start_date and end_date:
-            date_condition = "DATE(created_at) >= %s AND DATE(created_at) <= %s"
-            params = [start_date, end_date]
+        # Asset by location
+        cur.execute("""
+            SELECT location, COUNT(*) as count 
+            FROM assets 
+            WHERE is_deleted = FALSE AND location IS NOT NULL 
+            GROUP BY location 
+            ORDER BY count DESC
+        """)
+        by_location = cur.fetchall()
         
-        if user_role == 'Admin':
-            query = f"SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE AND {date_condition}"
-            cur.execute(query, tuple(params))
-            total = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE AND {date_condition}"
-            cur.execute(query, tuple(params))
-            available = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE AND {date_condition}"
-            cur.execute(query, tuple(params))
-            assigned = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE AND {date_condition}"
-            cur.execute(query, tuple(params))
-            in_repair = cur.fetchone()['count']
-            
-            query = f"SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL AND {date_condition} GROUP BY asset_type"
-            cur.execute(query, tuple(params))
-            by_type = cur.fetchall()
-            
-            query = f"SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL AND {date_condition} GROUP BY location"
-            cur.execute(query, tuple(params))
-            by_location = cur.fetchall()
-            
-            query = f"SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND {date_condition} GROUP BY status"
-            cur.execute(query, tuple(params))
-            by_status = cur.fetchall()
-        else:
-            query = f"SELECT COUNT(*) FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            total = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Available' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            available = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'Assigned' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            assigned = cur.fetchone()['count']
-            
-            query = f"SELECT COUNT(*) FROM assets WHERE status = 'In Repair' AND is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition}"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            in_repair = cur.fetchone()['count']
-            
-            query = f"SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY asset_type"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            by_type = cur.fetchall()
-            
-            query = f"SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY location"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            by_location = cur.fetchall()
-            
-            query = f"SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND {date_condition} GROUP BY status"
-            cur.execute(query, tuple([user_email, session.get('full_name')] + params))
-            by_status = cur.fetchall()
-        
-        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 10")
+        # Recent activity
+        cur.execute("""
+            SELECT * FROM activity_logs 
+            ORDER BY created_at DESC 
+            LIMIT 15
+        """)
         recent_activity = cur.fetchall()
+        
+        # Repair request stats
+        cur.execute("SELECT COUNT(*) FROM repair_requests WHERE status = 'Pending'")
+        pending_repairs = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM repair_requests WHERE status = 'Approved'")
+        approved_repairs = cur.fetchone()['count']
+        cur.execute("SELECT COUNT(*) FROM repair_requests WHERE status = 'Completed'")
+        completed_repairs = cur.fetchone()['count']
         
         cur.close()
         conn.close()
@@ -540,28 +505,26 @@ def dashboard():
         type_data = [item['count'] for item in by_type]
         location_labels = [item['location'] or 'Unknown' for item in by_location]
         location_data = [item['count'] for item in by_location]
-        status_labels = [item['status'] or 'Unknown' for item in by_status]
-        status_data = [item['count'] for item in by_status]
 
         return render_template('dashboard.html', 
-                             total=total, available=available, assigned=assigned, in_repair=in_repair,
+                             stats=stats,
                              recent_activity=recent_activity,
                              type_labels=type_labels, type_data=type_data,
                              location_labels=location_labels, location_data=location_data,
-                             status_labels=status_labels, status_data=status_data,
-                             date_filter=date_filter, start_date=start_date, end_date=end_date)
+                             pending_repairs=pending_repairs,
+                             approved_repairs=approved_repairs,
+                             completed_repairs=completed_repairs)
     except Exception as e:
         app.logger.error(f"Dashboard error: {e}")
         traceback.print_exc()
         flash("An error occurred loading the dashboard.")
         return redirect(url_for('login'))
 
+# ==================== REPAIR REQUEST ROUTES ====================
 
 @app.route('/repair_requests')
+@login_required
 def repair_requests():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -604,7 +567,6 @@ def repair_requests():
         flash("An error occurred loading repair requests.")
         return redirect(url_for('dashboard'))
 
-
 @app.route('/repair_request/new', methods=['GET', 'POST'])
 def new_repair_request():
     if request.method == 'POST':
@@ -624,36 +586,8 @@ def new_repair_request():
             scheduled_send_date = request.form.get('scheduled_send_date', '').strip()
             additional_notes = request.form.get('additional_notes', '').strip()
             
-            if not owner_name:
-                flash("Owner name is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not requester_email:
-                flash("Email address is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not asset_name:
-                flash("Asset name/model is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not asset_serial:
-                flash("Asset serial number is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not asset_type:
-                flash("Asset type is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not department:
-                flash("Department/Location is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not issue_description:
-                flash("Issue description is required.")
-                return redirect(url_for('new_repair_request'))
-            
-            if not scheduled_send_date:
-                flash("Preferred send date is required.")
+            if not all([owner_name, requester_email, asset_name, asset_serial, asset_type, department, issue_description, scheduled_send_date]):
+                flash("Please fill in all required fields.")
                 return redirect(url_for('new_repair_request'))
             
             conn = get_db_connection()
@@ -684,33 +618,24 @@ Additional Notes: {additional_notes if additional_notes else 'None'}
                     status, scheduled_send_date, created_by
                 )
                 VALUES (NULL, %s, %s, %s, 'Pending', %s, %s)
-            """, (
-                request_number, 
-                full_description, 
-                priority, 
-                scheduled_send_date,
-                requester_email
-            ))
+            """, (request_number, full_description, priority, scheduled_send_date, requester_email))
             
             conn.commit()
             cur.close()
             conn.close()
             
-            flash(f"Repair appointment {request_number} scheduled successfully! We'll contact you at {requester_email}.")
+            flash(f"✅ Repair appointment {request_number} scheduled successfully! We'll contact you at {requester_email}.")
             return redirect(url_for('repair_requests_track'))
         except Exception as e:
             app.logger.error(f"New repair request error: {e}")
-            flash(f"An error occurred creating the repair request: {str(e)}")
+            flash(f"An error occurred: {str(e)}")
             return redirect(url_for('new_repair_request'))
     
     return render_template('new_repair_request.html')
 
-
 @app.route('/repair_request/<int:id>')
+@login_required
 def view_repair_request(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -739,9 +664,6 @@ def view_repair_request(id):
             return redirect(url_for('repair_requests'))
         
         conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('repair_requests'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         cur.execute("SELECT * FROM request_comments WHERE request_id = %s ORDER BY created_at ASC", (id,))
         comments = cur.fetchall()
@@ -754,10 +676,8 @@ def view_repair_request(id):
                                is_admin=is_admin())
     except Exception as e:
         app.logger.error(f"View repair request error: {e}")
-        traceback.print_exc()
-        flash(f"An error occurred loading the repair request: {str(e)}")
+        flash(f"An error occurred: {str(e)}")
         return redirect(url_for('repair_requests'))
-
 
 @app.route('/repair_requests/track')
 def repair_requests_track():
@@ -784,12 +704,9 @@ def repair_requests_track():
     
     return render_template('repair_requests_track.html', requests=requests, email=email)
 
-
 @app.route('/repair_request/<int:id>/comment', methods=['POST'])
+@login_required
 def add_repair_comment(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
     try:
         comment = request.form.get('comment', '').strip()
         if not comment:
@@ -805,7 +722,7 @@ def add_repair_comment(id):
             INSERT INTO request_comments (request_id, comment, user_email)
             VALUES (%s, %s, %s)
         """, (id, comment, session.get('email')))
-        cur.execute("UPDATE repair_requests SET updated_at = %s WHERE id = %s", (datetime.now(), id))
+        cur.execute("UPDATE repair_requests SET updated_at = NOW() WHERE id = %s", (id,))
         conn.commit()
         cur.close()
         conn.close()
@@ -818,13 +735,9 @@ def add_repair_comment(id):
         flash("An error occurred adding the comment.")
         return redirect(url_for('view_repair_request', id=id))
 
-
 @app.route('/repair_request/<int:id>/approve', methods=['POST'])
+@admin_required
 def approve_repair_request(id):
-    if 'user' not in session or not is_admin():
-        flash("Only admins can approve repair requests.")
-        return redirect(url_for('repair_requests'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -832,7 +745,6 @@ def approve_repair_request(id):
             return redirect(url_for('repair_requests'))
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
-        # Get the repair request details
         cur.execute("SELECT * FROM repair_requests WHERE id = %s", (id,))
         request_data = cur.fetchone()
         
@@ -842,14 +754,10 @@ def approve_repair_request(id):
             conn.close()
             return redirect(url_for('repair_requests'))
         
-        # Log the raw description for debugging
-        app.logger.info(f"RAW DESCRIPTION: {request_data['issue_description']}")
-        
-        # Parse details from description
+        # Parse details
         description = request_data['issue_description'] or ''
         lines = description.split('\n') if description else []
         
-        # Default values
         asset_name = 'Unknown Asset'
         asset_serial = 'UNKNOWN-SERIAL'
         asset_type = 'Other'
@@ -859,7 +767,6 @@ def approve_repair_request(id):
         department = 'Pending Assignment'
         issue = description
         
-        # Parse each line
         for line in lines:
             line = line.strip()
             if not line:
@@ -881,20 +788,14 @@ def approve_repair_request(id):
             elif line.startswith('Issue:'):
                 issue = line.replace('Issue:', '').strip() or description
         
-        # Log parsed values for debugging
-        app.logger.info(f"PARSED - Serial: {asset_serial}, Name: {asset_name}, Type: {asset_type}, Brand: {asset_brand}, Owner: {owner_name}, Dept: {department}")
-        
-        # Generate tracking number
         tracking_number = f"REP-{datetime.now().strftime('%y%m%d')}-{secrets.randbelow(10000):04d}"
-        
         asset_id = None
         
-        # FIRST: Check if asset already exists by serial number
+        # Check if asset exists
         cur.execute("SELECT id FROM assets WHERE serial_number = %s", (asset_serial,))
-        existing_asset = cur.fetchone()
+        existing = cur.fetchone()
         
-        if existing_asset:
-            app.logger.info(f"Asset with serial {asset_serial} already exists, updating...")
+        if existing:
             # Update existing asset
             cur.execute("""
                 UPDATE assets SET 
@@ -910,20 +811,16 @@ def approve_repair_request(id):
                 WHERE serial_number = %s
                 RETURNING id
             """, (
-                tracking_number, 
-                department, 
+                tracking_number, department, 
                 f"Repair request approved. Owner: {owner_name}, Issue: {issue}", 
-                owner_name,
-                asset_type,
+                owner_name, asset_type,
                 f"{asset_brand} {asset_name}" if asset_brand != 'Unknown' else asset_name,
                 asset_serial
             ))
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
-                app.logger.info(f"Updated existing asset ID: {asset_id}")
         else:
-            app.logger.info(f"Creating new asset with serial {asset_serial}...")
             # Create new asset
             cur.execute("""
                 INSERT INTO assets (
@@ -933,23 +830,18 @@ def approve_repair_request(id):
                 ) VALUES (%s, %s, %s, %s, %s, %s, 'Available', %s, %s, FALSE, %s, NOW())
                 RETURNING id
             """, (
-                asset_type,
-                tracking_number,
+                asset_type, tracking_number,
                 f"{asset_brand} {asset_name}" if asset_brand != 'Unknown' else asset_name,
-                asset_serial,
-                'N/A',
-                'N/A',
-                department,
+                asset_serial, 'N/A', 'N/A', department,
                 f"Repair request approved. Owner: {owner_name}, Phone: {phone_number}, Issue: {issue}",
                 owner_name
             ))
             row = cur.fetchone()
             if row:
                 asset_id = row['id']
-                app.logger.info(f"Created new asset ID: {asset_id}")
         
-        # Update the repair request with the asset_id
         if asset_id:
+            # Update repair request
             cur.execute("""
                 UPDATE repair_requests 
                 SET status = 'Approved', 
@@ -959,29 +851,17 @@ def approve_repair_request(id):
                     asset_id = %s
                 WHERE id = %s
             """, (session.get('full_name'), asset_id, id))
-            app.logger.info(f"Updated repair request {id} with asset_id {asset_id}")
+            conn.commit()
+            
+            log_activity(session.get('email'), f"REPAIR REQUEST APPROVED - Asset {tracking_number} created", asset_serial, 
+                        f"Request #{request_data['request_number']}")
+            
+            flash(f"✅ Repair request approved! Asset created with tracking number {tracking_number}.")
         else:
-            app.logger.error(f"FAILED: No asset_id created for repair request {id}")
-            cur.execute("""
-                UPDATE repair_requests 
-                SET status = 'Approved', 
-                    approved_by = %s, 
-                    approved_date = NOW(),
-                    updated_at = NOW()
-                WHERE id = %s
-            """, (session.get('full_name'), id))
+            flash(f"❌ Failed to create asset. Please check the serial number: {asset_serial}")
         
-        conn.commit()
         cur.close()
         conn.close()
-        
-        if asset_id:
-            flash(f"✅ Repair request approved! Asset '{asset_name}' (SN: {asset_serial}) has been created with tracking number {tracking_number}.")
-            app.logger.info(f"SUCCESS: Asset {asset_id} created from repair request {id}")
-        else:
-            flash(f"⚠️ Repair request approved but asset could not be created. Please check serial number: {asset_serial}")
-            app.logger.error(f"FAILED: Asset creation failed for serial {asset_serial}")
-        
         return redirect(url_for('view_repair_request', id=id))
         
     except Exception as e:
@@ -992,13 +872,9 @@ def approve_repair_request(id):
         flash(f"❌ An error occurred: {str(e)}")
         return redirect(url_for('view_repair_request', id=id))
 
-
 @app.route('/repair_request/<int:id>/reject', methods=['POST'])
+@admin_required
 def reject_repair_request(id):
-    if 'user' not in session or not is_admin():
-        flash("Only admins can reject repair requests.")
-        return redirect(url_for('repair_requests'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -1007,10 +883,9 @@ def reject_repair_request(id):
         cur = conn.cursor()
         cur.execute("""
             UPDATE repair_requests 
-            SET status = 'Rejected', 
-                updated_at = %s
+            SET status = 'Rejected', updated_at = NOW()
             WHERE id = %s
-        """, (datetime.now(), id))
+        """, (id,))
         conn.commit()
         cur.close()
         conn.close()
@@ -1020,16 +895,12 @@ def reject_repair_request(id):
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
         app.logger.error(f"Reject repair request error: {e}")
-        flash("An error occurred rejecting the request.")
+        flash("An error occurred.")
         return redirect(url_for('view_repair_request', id=id))
 
-
 @app.route('/repair_request/<int:id>/mark_sent', methods=['POST'])
+@admin_required
 def mark_repair_sent(id):
-    if 'user' not in session or not is_admin():
-        flash("Only admins can mark requests as sent.")
-        return redirect(url_for('repair_requests'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -1038,30 +909,24 @@ def mark_repair_sent(id):
         cur = conn.cursor()
         cur.execute("""
             UPDATE repair_requests 
-            SET status = 'Sent', 
-                sent_date = %s,
-                updated_at = %s
+            SET status = 'Sent', sent_date = NOW(), updated_at = NOW()
             WHERE id = %s
-        """, (datetime.now(), datetime.now(), id))
+        """, (id,))
         conn.commit()
         cur.close()
         conn.close()
         
-        log_activity(session.get('email'), f"REPAIR REQUEST MARKED AS SENT: Request #{id}", None)
+        log_activity(session.get('email'), f"REPAIR REQUEST MARKED SENT: Request #{id}", None)
         flash("Repair request marked as sent to JTDI!")
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
         app.logger.error(f"Mark repair sent error: {e}")
-        flash("An error occurred marking the request as sent.")
+        flash("An error occurred.")
         return redirect(url_for('view_repair_request', id=id))
 
-
 @app.route('/repair_request/<int:id>/mark_completed', methods=['POST'])
+@admin_required
 def mark_repair_completed(id):
-    if 'user' not in session or not is_admin():
-        flash("Only admins can mark requests as completed.")
-        return redirect(url_for('repair_requests'))
-    
     try:
         conn = get_db_connection()
         if not conn:
@@ -1070,11 +935,9 @@ def mark_repair_completed(id):
         cur = conn.cursor()
         cur.execute("""
             UPDATE repair_requests 
-            SET status = 'Completed', 
-                completed_date = %s,
-                updated_at = %s
+            SET status = 'Completed', completed_date = NOW(), updated_at = NOW()
             WHERE id = %s
-        """, (datetime.now(), datetime.now(), id))
+        """, (id,))
         conn.commit()
         cur.close()
         conn.close()
@@ -1084,9 +947,564 @@ def mark_repair_completed(id):
         return redirect(url_for('view_repair_request', id=id))
     except Exception as e:
         app.logger.error(f"Mark repair completed error: {e}")
-        flash("An error occurred marking the request as completed.")
+        flash("An error occurred.")
         return redirect(url_for('view_repair_request', id=id))
 
+# ==================== ASSET MANAGEMENT ROUTES ====================
+
+@app.route('/view/<int:id>')
+@login_required
+def view_asset(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
+        asset = cur.fetchone()
+        
+        if not asset:
+            cur.close()
+            conn.close()
+            flash("Asset not found.")
+            return redirect(url_for('index'))
+        
+        if session.get('role') != 'Admin' and asset['assigned_to'] != session.get('email') and asset['assigned_to'] != session.get('full_name'):
+            flash("You don't have permission to view this asset.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('index'))
+
+        cur.execute("UPDATE assets SET scan_count = COALESCE(scan_count, 0) + 1 WHERE id = %s", (id,))
+        cur.execute("SELECT * FROM maintenance_logs WHERE asset_id = %s ORDER BY log_date DESC", (id,))
+        logs = cur.fetchall()
+        
+        maintenance_count = get_maintenance_count(id)
+        
+        cur.execute("SELECT * FROM repair_requests WHERE asset_id = %s ORDER BY created_at DESC", (id,))
+        repair_requests = cur.fetchall()
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return render_template('view.html', asset=asset, logs=logs, 
+                             repair_requests=repair_requests, maintenance_count=maintenance_count)
+    except Exception as e:
+        app.logger.error(f"View asset error: {e}")
+        flash("An error occurred loading the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_asset(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT assigned_to, serial_number FROM assets WHERE id = %s", (id,))
+        asset_check = cur.fetchone()
+        
+        if not asset_check:
+            flash("Asset not found.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('index'))
+        
+        if session.get('role') != 'Admin':
+            if asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name'):
+                flash("You only have permission to update status and maintenance logs for assets assigned to you.")
+                cur.close()
+                conn.close()
+                return redirect(url_for('index'))
+            
+            if request.method == 'POST':
+                status = request.form.get('status')
+                comment = request.form.get('comment', '').strip()
+                action_type = request.form.get('action_type', 'Other')
+                
+                cur.execute("UPDATE assets SET status = %s, updated_at = NOW() WHERE id = %s", (status, id))
+                
+                if comment:
+                    cur.execute("""
+                        INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
+                        VALUES (%s, %s, %s, %s, NOW())
+                    """, (id, action_type, comment, session.get('full_name')))
+                
+                conn.commit()
+                cur.close()
+                conn.close()
+                
+                log_activity(session.get('email'), f"ASSET STATUS UPDATED TO {status}", asset_check['serial_number'])
+                flash("Asset status updated successfully!")
+                return redirect(url_for('index'))
+
+        if request.method == 'POST':
+            status = request.form.get('status')
+            
+            cur.execute("""
+                UPDATE assets SET
+                    asset_type=%s, tracking_number=%s, cpu_name=%s,
+                    ram_size=%s, storage_type=%s, location=%s,
+                    status=%s, description=%s, owner_name=%s,
+                    updated_at=NOW()
+                WHERE id=%s
+            """, (
+                request.form.get('asset_type'),
+                request.form.get('tracking_number'),
+                request.form.get('cpu_name'),
+                request.form.get('ram_size'),
+                request.form.get('storage_type'),
+                request.form.get('location'),
+                status,
+                request.form.get('description'),
+                request.form.get('owner_name'),
+                id
+            ))
+
+            comment = request.form.get('comment', '').strip()
+            if comment:
+                cur.execute("""
+                    INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
+                    VALUES (%s, %s, %s, %s, NOW())
+                """, (id, request.form.get('action_type'), comment, session.get('full_name')))
+
+            cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
+            row = cur.fetchone()
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_activity(session.get('email'), "ASSET UPDATED", row['serial_number'] if row else None)
+            flash("Update Saved!")
+            return redirect(url_for('index'))
+
+        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
+        asset = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not asset:
+            flash("Asset not found.")
+            return redirect(url_for('index'))
+        
+        maintenance_count = get_maintenance_count(id)
+
+        return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin',
+                               maintenance_count=maintenance_count)
+    except Exception as e:
+        app.logger.error(f"Edit asset error: {e}")
+        flash("An error occurred updating the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/add', methods=['GET', 'POST'])
+@login_required
+def add_asset():
+    if request.method == 'POST':
+        try:
+            conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return redirect(url_for('index'))
+            cur = conn.cursor()
+            tn = (request.form.get('tracking_number') or '').strip()
+            if not tn:
+                tn = f"JTDI-{datetime.now().strftime('%y%m%H%M%S')}"
+
+            cur.execute("""
+                INSERT INTO assets (
+                    asset_type, tracking_number, cpu_name, serial_number,
+                    ram_size, storage_type, status, location, description, is_deleted, owner_name
+                ) VALUES (%s,%s,%s,%s,%s,%s,'Available',%s,%s,FALSE,%s)
+            """, (
+                request.form.get('asset_type'),
+                tn,
+                request.form.get('cpu_name'),
+                request.form.get('serial_number'),
+                request.form.get('ram_size'),
+                request.form.get('storage_type'),
+                request.form.get('location'),
+                request.form.get('description'),
+                request.form.get('owner_name')
+            ))
+            conn.commit()
+            cur.close()
+            conn.close()
+
+            log_activity(session.get('email'), "ASSET REGISTERED", request.form.get('serial_number'))
+            flash("Asset added successfully!")
+            return redirect(url_for('index'))
+        except Exception as e:
+            app.logger.error(f"Add asset error: {e}")
+            flash("Error: Serial number may already exist.")
+
+    return render_template('add.html')
+
+@app.route('/qr/<int:id>')
+@login_required
+def qr_code(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
+        asset = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not asset:
+            flash("Asset not found.")
+            return redirect(url_for('index'))
+
+        qr_url = url_for('view_asset', id=id, _external=True)
+        img = qrcode.make(qr_url)
+        buf = io.BytesIO()
+        img.save(buf)
+        qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+
+        return render_template('qr_display.html', qr_code=qr_b64, asset=asset)
+    except Exception as e:
+        app.logger.error(f"QR code error: {e}")
+        flash("An error occurred generating the QR code.")
+        return redirect(url_for('index'))
+
+@app.route('/assign/<int:id>', methods=['POST'])
+@admin_required
+def assign_asset(id):
+    try:
+        assigned_to_email = request.form.get('assigned_to_email', '').strip()
+        if not assigned_to_email:
+            flash("Please select a user to assign this asset.")
+            return redirect(url_for('index'))
+
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("SELECT email, full_name, username FROM users WHERE email = %s", (assigned_to_email,))
+        user = cur.fetchone()
+        
+        if not user:
+            flash("Selected user not found.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('index'))
+        
+        assigned_to_display = user['full_name'] if user['full_name'] else user['username']
+        
+        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
+        row = cur.fetchone()
+        
+        cur.execute("""
+            UPDATE assets SET 
+                assigned_to = %s,
+                checkout_date = NOW(),
+                checkout_by = %s,
+                status = 'Assigned',
+                updated_at = NOW()
+            WHERE id = %s
+        """, (assigned_to_display, session.get('full_name'), id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if row:
+            log_activity(session.get('email'), f"ASSET ASSIGNED TO {assigned_to_display}", row['serial_number'])
+        flash(f"Asset assigned to {assigned_to_display}.")
+        return redirect(url_for('index'))
+    except Exception as e:
+        app.logger.error(f"Assign asset error: {e}")
+        flash("An error occurred assigning the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/return/<int:id>', methods=['POST'])
+@login_required
+def return_asset(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("SELECT serial_number, assigned_to, cpu_name, tracking_number FROM assets WHERE id = %s", (id,))
+        row = cur.fetchone()
+        
+        if not row:
+            flash("Asset not found.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('index'))
+        
+        if session.get('role') != 'Admin' and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
+            flash("You can only return assets assigned to you.")
+            cur.close()
+            conn.close()
+            return redirect(url_for('index'))
+        
+        cur.execute("""
+            UPDATE assets SET 
+                assigned_to = NULL,
+                checkout_date = NULL,
+                checkout_by = NULL,
+                status = 'Completed',
+                completed_date = NOW(),
+                completed_by = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (session.get('full_name'), id))
+        
+        conn.commit()
+        
+        if row:
+            log_activity(session.get('email'), f"ASSET RETURNED BY {session.get('full_name')}", row['serial_number'])
+        
+        cur.close()
+        conn.close()
+        
+        flash(f"Asset '{row['cpu_name']} ({row['tracking_number']})' returned successfully!")
+        return redirect(url_for('index'))
+    except Exception as e:
+        app.logger.error(f"Return asset error: {e}")
+        flash("An error occurred returning the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/retire/<int:id>', methods=['POST'])
+@admin_required
+def retire_asset(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
+        row = cur.fetchone()
+        
+        cur.execute("""
+            UPDATE assets SET 
+                status = 'Retired',
+                retired_date = NOW(),
+                retired_by = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, (session.get('full_name'), id))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if row:
+            log_activity(session.get('email'), "ASSET RETIRED", row['serial_number'])
+        flash("Asset retired successfully.")
+        return redirect(url_for('index'))
+    except Exception as e:
+        app.logger.error(f"Retire asset error: {e}")
+        flash("An error occurred retiring the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/delete/<int:id>', methods=['POST'])
+@admin_required
+def delete_asset(id):
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
+        row = cur.fetchone()
+        cur.execute("UPDATE assets SET is_deleted = TRUE, updated_at = NOW() WHERE id = %s", (id,))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        if row:
+            log_activity(session.get('email'), "ASSET ARCHIVED", row['serial_number'])
+        flash("Asset archived.")
+        return redirect(url_for('index'))
+    except Exception as e:
+        app.logger.error(f"Delete asset error: {e}")
+        flash("An error occurred archiving the asset.")
+        return redirect(url_for('index'))
+
+@app.route('/completed_assets')
+@login_required
+def completed_assets():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        date_from = request.args.get('date_from', '').strip()
+        date_to = request.args.get('date_to', '').strip()
+        
+        if session.get('role') == 'Admin':
+            query = "SELECT * FROM assets WHERE is_deleted = FALSE AND completed_date IS NOT NULL"
+            params = []
+        else:
+            query = "SELECT * FROM assets WHERE is_deleted = FALSE AND completed_date IS NOT NULL AND (completed_by = %s OR completed_by = %s)"
+            params = [session.get('full_name'), session.get('email')]
+        
+        if date_from:
+            query += " AND DATE(completed_date) >= %s"
+            params.append(date_from)
+        if date_to:
+            query += " AND DATE(completed_date) <= %s"
+            params.append(date_to)
+        
+        query += " ORDER BY completed_date DESC"
+        cur.execute(query, tuple(params))
+        completed_assets_data = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return render_template('completed_assets.html', assets=completed_assets_data, date_from=date_from, date_to=date_to)
+    except Exception as e:
+        app.logger.error(f"Completed assets error: {e}")
+        flash("An error occurred loading completed assets.")
+        return redirect(url_for('dashboard'))
+
+@app.route('/activity')
+@login_required
+def activity():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('dashboard'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
+        logs = cur.fetchall()
+        
+        if is_admin():
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                ORDER BY r.created_at DESC LIMIT 20
+            """)
+        else:
+            cur.execute("""
+                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
+                FROM repair_requests r
+                LEFT JOIN assets a ON r.asset_id = a.id
+                WHERE r.created_by = %s
+                ORDER BY r.created_at DESC LIMIT 20
+            """, (session.get('email'),))
+        
+        requests = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        return render_template('activity.html', logs=logs, requests=requests)
+    except Exception as e:
+        app.logger.error(f"Activity error: {e}")
+        flash("An error occurred loading activity logs.")
+        return redirect(url_for('dashboard'))
+
+# ==================== EXPORT ROUTES ====================
+
+@app.route('/export')
+@login_required
+def export_csv():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor()
+        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
+        params = []
+        
+        if session.get('role') != 'Admin':
+            query += " AND (assigned_to = %s OR assigned_to = %s)"
+            params = [session.get('email'), session.get('full_name')]
+            
+        query += " ORDER BY id DESC"
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow([d[0] for d in cur.description])
+        writer.writerows(rows)
+        output.seek(0)
+
+        cur.close()
+        conn.close()
+
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment;filename=assets.csv"}
+        )
+    except Exception as e:
+        app.logger.error(f"CSV export error: {e}")
+        flash("An error occurred during CSV export.")
+        return redirect(url_for('index'))
+
+@app.route('/export/excel')
+@login_required
+def export_excel():
+    try:
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('index'))
+        cur = conn.cursor()
+        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
+        params = []
+        
+        if session.get('role') != 'Admin':
+            query += " AND (assigned_to = %s OR assigned_to = %s)"
+            params = [session.get('email'), session.get('full_name')]
+            
+        query += " ORDER BY id DESC"
+        cur.execute(query, params)
+        column_names = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+
+        data = []
+        for row in rows:
+            data.append(dict(zip(column_names, row)))
+        
+        df = pd.DataFrame(data)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Assets')
+        output.seek(0)
+
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f"Assets_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        )
+    except Exception as e:
+        app.logger.error(f"Excel export error: {e}")
+        flash(f"Error exporting to Excel: {str(e)}")
+        return redirect(url_for('index'))
+
+# ==================== AUTHENTICATION ROUTES ====================
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1143,13 +1561,11 @@ def login():
                 cur.close()
                 conn.close()
                 log_access(user['email'], "LOGIN")
-                app.logger.info(f"User logged in: {email}")
                 return redirect(url_for('dashboard'))
             else:
                 if email not in login_attempts:
                     login_attempts[email] = []
                 login_attempts[email].append(datetime.now())
-                app.logger.warning(f"Failed login attempt for: {email}")
 
             cur.close()
             conn.close()
@@ -1160,12 +1576,9 @@ def login():
 
     return render_template('login.html')
 
-
 @app.route('/change_password', methods=['GET', 'POST'])
+@login_required
 def change_password():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
     if request.method == 'POST':
         current_password = request.form.get('current_password', '')
         new_password = request.form.get('new_password', '')
@@ -1211,7 +1624,6 @@ def change_password():
     
     return render_template('change_password.html')
 
-
 @app.route('/logout')
 def logout():
     if session.get('email'):
@@ -1219,870 +1631,11 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-
-@app.route('/view/<int:id>')
-def view_asset(id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
-        asset = cur.fetchone()
-        
-        if not asset:
-            cur.close()
-            conn.close()
-            return "Not Found", 404
-        
-        if session.get('role') != 'Admin' and asset['assigned_to'] != session.get('email') and asset['assigned_to'] != session.get('full_name'):
-            flash("You don't have permission to view this asset.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('index'))
-
-        cur.execute("UPDATE assets SET scan_count = COALESCE(scan_count, 0) + 1 WHERE id = %s", (id,))
-        cur.execute("SELECT * FROM maintenance_logs WHERE asset_id = %s ORDER BY log_date DESC", (id,))
-        logs = cur.fetchall()
-        
-        maintenance_count = get_maintenance_count(id)
-        
-        cur.execute("""
-            SELECT * FROM repair_requests 
-            WHERE asset_id = %s 
-            ORDER BY created_at DESC
-        """, (id,))
-        repair_requests = cur.fetchall()
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        return render_template('view.html', asset=asset, logs=logs, repair_requests=repair_requests, maintenance_count=maintenance_count)
-    except Exception as e:
-        app.logger.error(f"View asset error: {e}")
-        flash("An error occurred loading the asset.")
-        return redirect(url_for('index'))
-
-
-@app.route('/edit/<int:id>', methods=['GET', 'POST'])
-def edit_asset(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT assigned_to, serial_number FROM assets WHERE id = %s", (id,))
-        asset_check = cur.fetchone()
-        
-        if not asset_check:
-            flash("Asset not found.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('index'))
-        
-        if session.get('role') != 'Admin':
-            if asset_check['assigned_to'] != session.get('email') and asset_check['assigned_to'] != session.get('full_name'):
-                flash("You only have permission to update status and maintenance logs for assets assigned to you.")
-                cur.close()
-                conn.close()
-                return redirect(url_for('index'))
-            
-            if request.method == 'POST':
-                status = request.form.get('status')
-                comment = request.form.get('comment', '').strip()
-                action_type = request.form.get('action_type', 'Other')
-                
-                cur.execute("UPDATE assets SET status = %s WHERE id = %s", (status, id))
-                
-                if comment:
-                    cur.execute("""
-                        INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (id, action_type, comment, session.get('full_name'), datetime.now()))
-                
-                conn.commit()
-                cur.close()
-                conn.close()
-                
-                log_activity(
-                    session.get('email') or session.get('full_name'),
-                    f"ASSET STATUS UPDATED TO {status}",
-                    asset_check['serial_number']
-                )
-                flash("Asset status and maintenance log updated successfully!")
-                return redirect(url_for('index'))
-
-        if request.method == 'POST':
-            cur.execute("""
-                UPDATE assets SET
-                    asset_type=%s, tracking_number=%s, cpu_name=%s,
-                    ram_size=%s, storage_type=%s, location=%s,
-                    status=%s, description=%s, owner_name=%s,
-                    updated_at=NOW()
-                WHERE id=%s
-            """, (
-                request.form.get('asset_type'),
-                request.form.get('tracking_number'),
-                request.form.get('cpu_name'),
-                request.form.get('ram_size'),
-                request.form.get('storage_type'),
-                request.form.get('location'),
-                request.form.get('status'),
-                request.form.get('description'),
-                request.form.get('owner_name'),
-                id
-            ))
-
-            comment = request.form.get('comment', '').strip()
-            if comment:
-                cur.execute("""
-                    INSERT INTO maintenance_logs (asset_id, action_type, comment, updated_by, log_date)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (
-                    id,
-                    request.form.get('action_type'),
-                    comment,
-                    session.get('full_name'),
-                    datetime.now()
-                ))
-
-            cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
-            row = cur.fetchone()
-            conn.commit()
-            cur.close()
-            conn.close()
-
-            log_activity(
-                session.get('email') or session.get('full_name'),
-                "ASSET UPDATED",
-                row['serial_number'] if row else None
-            )
-            app.logger.info(f"Asset updated: {id}")
-            flash("Update Saved!")
-            return redirect(url_for('index'))
-
-        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
-        asset = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not asset:
-            flash("Asset not found.")
-            return redirect(url_for('index'))
-        
-        maintenance_count = get_maintenance_count(id)
-
-        return render_template('edit.html', asset=asset, is_admin=session.get('role') == 'Admin',
-                               maintenance_count=maintenance_count)
-    except Exception as e:
-        app.logger.error(f"Edit asset error: {e}")
-        flash("An error occurred updating the asset.")
-        return redirect(url_for('index'))
-
-
-@app.route('/add', methods=['GET', 'POST'])
-def add_asset():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    if request.method == 'POST':
-        try:
-            conn = get_db_connection()
-            if not conn:
-                flash("Database connection error.")
-                return redirect(url_for('index'))
-            cur = conn.cursor()
-            tn = (request.form.get('tracking_number') or '').strip()
-            if not tn:
-                tn = f"JTDI-{datetime.now().strftime('%y%m%H%M%S')}"
-
-            cur.execute("""
-                INSERT INTO assets (
-                    asset_type, tracking_number, cpu_name, serial_number,
-                    ram_size, storage_type, status, location, description, is_deleted, owner_name
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, FALSE, %s)
-            """, (
-                request.form.get('asset_type'),
-                tn,
-                request.form.get('cpu_name'),
-                request.form.get('serial_number'),
-                request.form.get('ram_size'),
-                request.form.get('storage_type'),
-                'Available',
-                request.form.get('location'),
-                request.form.get('description'),
-                request.form.get('owner_name')
-            ))
-            conn.commit()
-            cur.close()
-            conn.close()
-
-            log_activity(
-                session.get('email') or session.get('full_name'),
-                "ASSET REGISTERED",
-                request.form.get('serial_number')
-            )
-            app.logger.info(f"Asset added: {request.form.get('serial_number')}")
-            flash("Asset added successfully!")
-            return redirect(url_for('index'))
-        except Exception as e:
-            app.logger.error(f"Add asset error: {e}")
-            flash("Error: Serial number may already exist.")
-
-    return render_template('add.html')
-
-
-@app.route('/qr/<int:id>')
-def qr_code(id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
-        asset = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not asset:
-            flash("Asset not found.")
-            return redirect(url_for('index'))
-
-        qr_url = url_for('view_asset', id=id, _external=True)
-        img = qrcode.make(qr_url)
-        buf = io.BytesIO()
-        img.save(buf)
-        qr_b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-
-        return render_template('qr_display.html', qr_code=qr_b64, asset=asset)
-    except Exception as e:
-        app.logger.error(f"QR code error: {e}")
-        flash("An error occurred generating the QR code.")
-        return redirect(url_for('index'))
-
-
-@app.route('/assign/<int:id>', methods=['POST'])
-def assign_asset(id):
-    if 'user' not in session or session.get('role') != 'Admin':
-        flash("Only admins can assign assets.")
-        return redirect(url_for('login'))
-
-    try:
-        assigned_to_email = request.form.get('assigned_to_email', '').strip()
-        if not assigned_to_email:
-            flash("Please select a user to assign this asset.")
-            return redirect(url_for('index'))
-
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        cur.execute("SELECT email, full_name, username FROM users WHERE email = %s", (assigned_to_email,))
-        user = cur.fetchone()
-        
-        if not user:
-            flash("Selected user not found.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('index'))
-        
-        assigned_to_display = user['full_name'] if user['full_name'] else user['username']
-        
-        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
-        row = cur.fetchone()
-        
-        cur.execute("""
-            UPDATE assets SET 
-                assigned_to = %s,
-                checkout_date = %s,
-                checkout_by = %s,
-                status = 'Assigned',
-                updated_at = NOW()
-            WHERE id = %s
-        """, (assigned_to_display, datetime.now(), session.get('full_name'), id))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        if row:
-            log_activity(
-                session.get('email') or session.get('full_name'),
-                f"ASSET ASSIGNED TO {assigned_to_display}",
-                row['serial_number']
-            )
-            app.logger.info(f"Asset assigned: {id} to {assigned_to_display}")
-        flash(f"Asset assigned to {assigned_to_display}.")
-        return redirect(url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Assign asset error: {e}")
-        flash("An error occurred assigning the asset.")
-        return redirect(url_for('index'))
-
-
-@app.route('/return/<int:id>', methods=['POST'])
-def return_asset(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        cur.execute("SELECT serial_number, assigned_to, cpu_name, tracking_number FROM assets WHERE id = %s", (id,))
-        row = cur.fetchone()
-        
-        if not row:
-            flash("Asset not found.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('index'))
-        
-        if session.get('role') != 'Admin' and row['assigned_to'] != session.get('email') and row['assigned_to'] != session.get('full_name'):
-            flash("You can only return assets assigned to you.")
-            cur.close()
-            conn.close()
-            return redirect(url_for('index'))
-        
-        cur.execute("""
-            UPDATE assets SET 
-                assigned_to = NULL,
-                checkout_date = NULL,
-                checkout_by = NULL,
-                status = 'Completed',
-                completed_date = %s,
-                completed_by = %s,
-                updated_at = NOW()
-            WHERE id = %s
-        """, (datetime.now(), session.get('full_name'), id))
-        
-        conn.commit()
-        
-        if row:
-            log_activity(
-                session.get('email') or session.get('full_name'),
-                f"ASSET COMPLETED AND RETURNED BY {session.get('full_name')}",
-                row['serial_number']
-            )
-            app.logger.info(f"Asset completed and returned: {id} by {session.get('full_name')}")
-        
-        cur.close()
-        conn.close()
-        
-        flash(f"Asset '{row['cpu_name']} ({row['tracking_number']})' completed and returned successfully!")
-        return redirect(url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Return asset error: {e}")
-        flash("An error occurred returning the asset.")
-        return redirect(url_for('index'))
-
-
-@app.route('/delete/<int:id>', methods=['POST'])
-def delete_asset(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT serial_number FROM assets WHERE id = %s", (id,))
-        row = cur.fetchone()
-        cur.execute("UPDATE assets SET is_deleted = TRUE, updated_at = NOW() WHERE id = %s", (id,))
-        conn.commit()
-        cur.close()
-        conn.close()
-
-        if row:
-            log_activity(
-                session.get('email') or session.get('full_name'),
-                "ASSET ARCHIVED",
-                row['serial_number']
-            )
-            app.logger.info(f"Asset archived: {id}")
-        flash("Asset archived.")
-        return redirect(url_for('index'))
-    except Exception as e:
-        app.logger.error(f"Delete asset error: {e}")
-        flash("An error occurred archiving the asset.")
-        return redirect(url_for('index'))
-
-
-@app.route('/activity')
-def activity():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('dashboard'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        cur.execute("SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 200")
-        logs = cur.fetchall()
-        
-        if is_admin():
-            cur.execute("""
-                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
-                FROM repair_requests r
-                LEFT JOIN assets a ON r.asset_id = a.id
-                ORDER BY r.created_at DESC
-                LIMIT 20
-            """)
-        else:
-            cur.execute("""
-                SELECT r.*, a.tracking_number, a.cpu_name as asset_name
-                FROM repair_requests r
-                LEFT JOIN assets a ON r.asset_id = a.id
-                WHERE r.created_by = %s
-                ORDER BY r.created_at DESC
-                LIMIT 20
-            """, (session.get('email'),))
-        
-        requests = cur.fetchall()
-        cur.close()
-        conn.close()
-
-        return render_template('activity.html', logs=logs, requests=requests)
-    except Exception as e:
-        app.logger.error(f"Activity error: {e}")
-        flash("An error occurred loading activity logs.")
-        return redirect(url_for('dashboard'))
-
-
-@app.route('/export')
-def export_csv():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor()
-        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
-        params = []
-        
-        if session.get('role') != 'Admin':
-            query += " AND (assigned_to = %s OR assigned_to = %s)"
-            params = [session.get('email'), session.get('full_name')]
-            
-        query += " ORDER BY id DESC"
-        cur.execute(query, params)
-        rows = cur.fetchall()
-
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow([d[0] for d in cur.description])
-        writer.writerows(rows)
-        output.seek(0)
-
-        cur.close()
-        conn.close()
-
-        app.logger.info("CSV export completed")
-        return Response(
-            output.getvalue(),
-            mimetype="text/csv",
-            headers={"Content-Disposition": "attachment;filename=assets.csv"}
-        )
-    except Exception as e:
-        app.logger.error(f"CSV export error: {e}")
-        flash("An error occurred during CSV export.")
-        return redirect(url_for('index'))
-
-
-@app.route('/export/excel')
-def export_excel():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor()
-        query = "SELECT * FROM assets WHERE is_deleted = FALSE"
-        params = []
-        
-        if session.get('role') != 'Admin':
-            query += " AND (assigned_to = %s OR assigned_to = %s)"
-            params = [session.get('email'), session.get('full_name')]
-            
-        query += " ORDER BY id DESC"
-        cur.execute(query, params)
-        column_names = [desc[0] for desc in cur.description]
-        rows = cur.fetchall()
-        
-        cur.close()
-        conn.close()
-
-        data = []
-        for row in rows:
-            data.append(dict(zip(column_names, row)))
-        
-        df = pd.DataFrame(data)
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Assets')
-        output.seek(0)
-
-        app.logger.info("Excel export completed")
-        return send_file(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=f"Assets_{datetime.now().strftime('%Y%m%d')}.xlsx"
-        )
-    except Exception as e:
-        app.logger.error(f"Excel export error: {e}")
-        flash(f"Error exporting to Excel: {str(e)}")
-        return redirect(url_for('index'))
-
-
-@app.route('/export/analytics_report')
-def export_analytics_report():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('dashboard'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        user_role = session.get('role')
-        user_email = session.get('email')
-        
-        if user_role == 'Admin':
-            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
-            by_type = cur.fetchall()
-            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
-            by_location = cur.fetchall()
-            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
-            by_status = cur.fetchall()
-            cur.execute("SELECT COUNT(*) as total FROM assets WHERE is_deleted = FALSE")
-            total_assets = cur.fetchone()['total']
-        else:
-            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND asset_type IS NOT NULL GROUP BY asset_type", (user_email, session.get('full_name')))
-            by_type = cur.fetchall()
-            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND location IS NOT NULL GROUP BY location", (user_email, session.get('full_name')))
-            by_location = cur.fetchall()
-            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) GROUP BY status", (user_email, session.get('full_name')))
-            by_status = cur.fetchall()
-            cur.execute("SELECT COUNT(*) as total FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)", (user_email, session.get('full_name')))
-            total_assets = cur.fetchone()['total']
-        
-        cur.close()
-        conn.close()
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Asset Analytics Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #1a2a6c; }}
-                .report-title {{ color: #1a2a6c; font-size: 24px; }}
-                .report-date {{ color: #666; font-size: 14px; }}
-                .summary {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 30px; }}
-                .summary h3 {{ margin-top: 0; color: #1a2a6c; }}
-                .summary-number {{ font-size: 36px; font-weight: bold; color: #1a2a6c; }}
-                .section {{ margin-bottom: 30px; }}
-                .section-title {{ background: #1a2a6c; color: white; padding: 10px; border-radius: 5px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
-                th {{ background: #f0f0f0; }}
-                .footer {{ text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1 class="report-title">JTDI Asset Tracker - Analytics Report</h1>
-                <p class="report-date">Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                <p>User: {session.get('full_name')} ({session.get('role')})</p>
-            </div>
-            
-            <div class="summary">
-                <h3>Summary</h3>
-                <div class="summary-number">{total_assets}</div>
-                <p>Total Assets in System</p>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Type</h3>
-                <table>
-                    <tr><th>Asset Type</th><th>Count</th></tr>
-        """
-        
-        for item in by_type:
-            html_content += f"<tr><td>{item['asset_type'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += """
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Department</h3>
-                <table>
-                    <tr><th>Department</th><th>Count</th></tr>
-        """
-        
-        for item in by_location:
-            html_content += f"<tr><td>{item['location'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += """
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Status</h3>
-                <table>
-                    <tr><th>Status</th><th>Count</th></tr>
-        """
-        
-        for item in by_status:
-            html_content += f"<tr><td>{item['status'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += f"""
-                </table>
-            </div>
-            
-            <div class="footer">
-                <p>JTDI Asset Tracker System - Confidential Report</p>
-                <p>This report was generated automatically. For questions, contact system administrator.</p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        output = io.BytesIO()
-        output.write(html_content.encode('utf-8'))
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='text/html',
-            as_attachment=True,
-            download_name=f"analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        )
-    except Exception as e:
-        app.logger.error(f"Analytics report error: {e}")
-        flash("An error occurred generating the report.")
-        return redirect(url_for('dashboard'))
-
-
-@app.route('/export/repair_request/<int:id>')
-def export_repair_request(id):
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
-        asset = cur.fetchone()
-        cur.close()
-        conn.close()
-        
-        if not asset:
-            flash("Asset not found.")
-            return redirect(url_for('index'))
-        
-        maintenance_count = get_maintenance_count(id)
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Parts Request Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ text-align: center; margin-bottom: 30px; border-bottom: 2px solid #dc3545; padding-bottom: 20px; }}
-                .title {{ color: #dc3545; font-size: 24px; }}
-                .asset-info {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-                .info-row {{ margin-bottom: 10px; }}
-                .info-label {{ font-weight: bold; width: 150px; display: inline-block; }}
-                .section {{ margin-bottom: 30px; }}
-                .section-title {{ background: #dc3545; color: white; padding: 10px; border-radius: 5px; }}
-                .parts-table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                .parts-table th, .parts-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                .parts-table th {{ background: #f0f0f0; }}
-                .signature {{ margin-top: 40px; }}
-                .signature-line {{ margin-top: 30px; display: flex; justify-content: space-between; }}
-                .footer {{ margin-top: 40px; text-align: center; font-size: 12px; color: #666; }}
-                .maintenance-count {{ font-size: 18px; font-weight: bold; color: #dc3545; }}
-                @media print {{
-                    body {{ margin: 0; }}
-                    .no-print {{ display: none; }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="no-print" style="text-align: right; margin-bottom: 20px;">
-                <button onclick="window.print()" style="padding: 10px 20px; background: #1a2a6c; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                    Print / Save as PDF
-                </button>
-            </div>
-            
-            <div class="header">
-                <h1 class="title">PARTS REQUEST REPORT</h1>
-                <p>JTDI Asset Tracker System</p>
-                <p>Date: {datetime.now().strftime('%Y-%m-%d')}</p>
-            </div>
-            
-            <div class="asset-info">
-                <h3>Asset Information</h3>
-                <div class="info-row"><span class="info-label">Asset ID:</span> {asset['id']}</div>
-                <div class="info-row"><span class="info-label">Tracking Number:</span> {asset['tracking_number']}</div>
-                <div class="info-row"><span class="info-label">Asset Name/Model:</span> {asset['cpu_name'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Serial Number:</span> {asset['serial_number']}</div>
-                <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting Parts</strong></div>
-                <div class="info-row"><span class="info-label">Total Maintenance Cases:</span> <span class="maintenance-count">{maintenance_count}</span></div>
-                <div class="info-row"><span class="info-label">Requested By:</span> {session.get('full_name')}</div>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Required Parts / Components</h3>
-                <table class="parts-table">
-                    <thead>
-                        <tr><th>No.</th><th>Part Name</th><th>Quantity</th><th>Estimated Cost (RM)</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>1</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>2</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>3</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>4</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>5</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Remarks / Notes</h3>
-                <div style="height: 100px; border: 1px solid #ddd; padding: 10px; margin-top: 10px;"></div>
-            </div>
-            
-            <div class="signature">
-                <div class="signature-line">
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Requested By (Technician)</p>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Approved By (Supervisor)</p>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Received By (Store)</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="footer">
-                <p>This is a system-generated parts request. Please complete all required sections.</p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        output = io.BytesIO()
-        output.write(html_content.encode('utf-8'))
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='text/html',
-            as_attachment=True,
-            download_name=f"parts_request_{asset['tracking_number']}_{datetime.now().strftime('%Y%m%d')}.html"
-        )
-    except Exception as e:
-        app.logger.error(f"Parts request error: {e}")
-        flash("An error occurred generating the parts request.")
-        return redirect(url_for('index'))
-
-
-@app.route('/completed_assets')
-def completed_assets():
-    if 'user' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('dashboard'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        date_from = request.args.get('date_from', '').strip()
-        date_to = request.args.get('date_to', '').strip()
-        
-        if session.get('role') == 'Admin':
-            query = "SELECT * FROM assets WHERE is_deleted = FALSE AND completed_date IS NOT NULL"
-            params = []
-        else:
-            query = "SELECT * FROM assets WHERE is_deleted = FALSE AND completed_date IS NOT NULL AND (completed_by = %s OR completed_by = %s)"
-            params = [session.get('full_name'), session.get('email')]
-        
-        if date_from:
-            query += " AND DATE(completed_date) >= %s"
-            params.append(date_from)
-        if date_to:
-            query += " AND DATE(completed_date) <= %s"
-            params.append(date_to)
-        
-        query += " ORDER BY completed_date DESC"
-        cur.execute(query, tuple(params))
-        completed_assets_data = cur.fetchall()
-        cur.close()
-        conn.close()
-        
-        return render_template('completed_assets.html', assets=completed_assets_data, date_from=date_from, date_to=date_to)
-    except Exception as e:
-        app.logger.error(f"Completed assets error: {e}")
-        flash("An error occurred loading completed assets.")
-        return redirect(url_for('dashboard'))
-
+# ==================== ADMIN ROUTES ====================
 
 @app.route('/admin')
+@admin_required
 def admin_dashboard():
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2095,7 +1648,6 @@ def admin_dashboard():
         access_logs = cur.fetchall()
         cur.execute("SELECT * FROM login_logs ORDER BY login_time DESC LIMIT 100")
         login_logs = cur.fetchall()
-
         cur.close()
         conn.close()
 
@@ -2105,12 +1657,9 @@ def admin_dashboard():
         flash("An error occurred loading the admin dashboard.")
         return redirect(url_for('dashboard'))
 
-
 @app.route('/admin/users', methods=['GET', 'POST'])
+@admin_required
 def manage_users():
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2120,33 +1669,20 @@ def manage_users():
 
         if request.method == 'POST':
             role = request.form.get('role', 'User')
-            if role not in ('User', 'Admin'):
-                role = 'User'
-            
             email = request.form.get('email', '').strip().lower()
             username = email.split('@')[0].replace('.', '_').replace('-', '_')
             full_name = request.form.get('full_name') or username
-            
             temp_password = generate_temp_password()
             
             try:
                 cur.execute("""
                     INSERT INTO users (full_name, username, email, password, role, first_login)
                     VALUES (%s, %s, %s, %s, %s, TRUE)
-                """, (
-                    full_name,
-                    username,
-                    email,
-                    temp_password,
-                    role
-                ))
+                """, (full_name, username, email, temp_password, role))
                 conn.commit()
-                app.logger.info(f"User created: {email}")
-                flash(f"User created successfully! Temporary password: {temp_password}")
-                app.logger.info(f"Temporary password for {email}: {temp_password}")
+                flash(f"User created! Temporary password: {temp_password}")
             except Exception as e:
                 conn.rollback()
-                app.logger.error(f"User creation error: {e}")
                 flash("Error: Email already exists.")
 
         cur.execute("SELECT * FROM users ORDER BY id DESC")
@@ -2157,15 +1693,12 @@ def manage_users():
         return render_template('manage_user.html', users=users)
     except Exception as e:
         app.logger.error(f"Manage users error: {e}")
-        flash("An error occurred. Please try again.")
+        flash("An error occurred.")
         return redirect(url_for('admin_dashboard'))
 
-
 @app.route('/admin/edit_user/<int:id>', methods=['GET', 'POST'])
+@admin_required
 def edit_user(id):
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2175,8 +1708,6 @@ def edit_user(id):
 
         if request.method == 'POST':
             role = request.form.get('role', 'User')
-            if role not in ('User', 'Admin'):
-                role = 'User'
             new_password = request.form.get('password', '').strip()
 
             if new_password:
@@ -2202,11 +1733,9 @@ def edit_user(id):
 
             try:
                 conn.commit()
-                app.logger.info(f"User updated: {id}")
                 flash("User updated.")
             except Exception as e:
                 conn.rollback()
-                app.logger.error(f"User update error: {e}")
                 flash("Update failed: email may already be in use.")
 
             cur.close()
@@ -2225,15 +1754,12 @@ def edit_user(id):
         return render_template('edit_user.html', user=user)
     except Exception as e:
         app.logger.error(f"Edit user error: {e}")
-        flash("An error occurred. Please try again.")
+        flash("An error occurred.")
         return redirect(url_for('manage_users'))
 
-
 @app.route('/admin/delete_user/<int:id>', methods=['POST'])
+@admin_required
 def delete_user(id):
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2248,7 +1774,6 @@ def delete_user(id):
         else:
             cur.execute("DELETE FROM users WHERE id = %s", (id,))
             conn.commit()
-            app.logger.info(f"User deleted: {id}")
             flash("User deleted.")
 
         cur.close()
@@ -2259,12 +1784,9 @@ def delete_user(id):
         flash("An error occurred deleting the user.")
         return redirect(url_for('manage_users'))
 
-
 @app.route('/admin/logs')
+@admin_required
 def admin_logs():
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2282,19 +1804,14 @@ def admin_logs():
         flash("An error occurred loading login logs.")
         return redirect(url_for('admin_dashboard'))
 
-
 @app.route('/admin/backup')
+@admin_required
 def backup_page():
-    if not is_admin():
-        return redirect(url_for('login'))
     return render_template('backup.html')
 
-
 @app.route('/admin/backup/download')
+@admin_required
 def backup_database():
-    if not is_admin():
-        return redirect(url_for('login'))
-
     try:
         conn = get_db_connection()
         if not conn:
@@ -2328,7 +1845,6 @@ def backup_database():
         output.write(backup_json.encode('utf-8'))
         output.seek(0)
 
-        app.logger.info("Database backup completed")
         return send_file(
             output,
             mimetype='application/json',
@@ -2339,7 +1855,6 @@ def backup_database():
         app.logger.error(f"Database backup error: {e}")
         flash("An error occurred during database backup.")
         return redirect(url_for('admin_dashboard'))
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
