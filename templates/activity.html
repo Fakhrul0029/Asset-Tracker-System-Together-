@@ -63,6 +63,43 @@
         body.dark-mode .request-timestamp {
             color: #999;
         }
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+        }
+        body.dark-mode .table th {
+            background: #1e1e3f;
+            color: #e0e0e0;
+            border-bottom-color: #3a3a5c;
+        }
+        .activity-details {
+            font-size: 0.8rem;
+            color: #6c757d;
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+        body.dark-mode .activity-details {
+            color: #999;
+        }
+        .log-row:hover {
+            background-color: #f0f4ff !important;
+        }
+        body.dark-mode .log-row:hover {
+            background-color: #2a2a4a !important;
+        }
+        .badge-action {
+            font-size: 0.7rem;
+            padding: 3px 8px;
+        }
     </style>
 </head>
 <body>
@@ -194,15 +231,31 @@
                                 <th>User</th>
                                 <th>Action</th>
                                 <th>Asset Serial</th>
+                                <th>Details</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for log in logs %}
-                            <tr>
-                                <td>{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
+                            <tr class="log-row">
+                                <td class="text-nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
                                 <td>{{ log.user_email }}</td>
-                                <td>{{ log.action }}</td>
+                                <td>
+                                    <span class="badge badge-action 
+                                        {% if 'APPROVED' in log.action %}bg-success
+                                        {% elif 'REJECTED' in log.action %}bg-danger
+                                        {% elif 'CREATED' in log.action or 'REGISTERED' in log.action %}bg-primary
+                                        {% elif 'UPDATED' in log.action %}bg-warning text-dark
+                                        {% elif 'RETURNED' in log.action %}bg-info
+                                        {% elif 'RETIRED' in log.action %}bg-secondary
+                                        {% else %}bg-secondary{% endif %}
+                                    ">
+                                        {{ log.action }}
+                                    </span>
+                                </td>
                                 <td>{{ log.asset_serial or '-' }}</td>
+                                <td>
+                                    <div class="activity-details">{{ log.details or '-' }}</div>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
