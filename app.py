@@ -724,6 +724,7 @@ def view_repair_request(id):
         if not conn:
             flash("Database connection error.")
             return redirect(url_for('repair_requests'))
+        
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         
         cur.execute("""
@@ -732,36 +733,36 @@ def view_repair_request(id):
             LEFT JOIN assets a ON r.asset_id = a.id
             WHERE r.id = %s
         """, (id,))
+        
         request_data = cur.fetchone()
+        cur.close()
+        conn.close()
         
         if not request_data:
             flash("Repair request not found.")
-            cur.close()
-            conn.close()
             return redirect(url_for('repair_requests'))
         
-        # Check permission
+        # Check permission - admin can view all, users can only view their own
         if not is_admin() and request_data['created_by'] != session.get('email'):
             flash("You don't have permission to view this request.")
-            cur.close()
-            conn.close()
             return redirect(url_for('repair_requests'))
         
         # Get comments
-        cur.execute("""
-            SELECT * FROM request_comments 
-            WHERE request_id = %s 
-            ORDER BY created_at ASC
-        """, (id,))
+        conn = get_db_connection()
+        if not conn:
+            flash("Database connection error.")
+            return redirect(url_for('repair_requests'))
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cur.execute("SELECT * FROM request_comments WHERE request_id = %s ORDER BY created_at ASC", (id,))
         comments = cur.fetchall()
-        
         cur.close()
         conn.close()
         
         return render_template('repair_request_detail.html', request=request_data, comments=comments, is_admin=is_admin())
     except Exception as e:
         app.logger.error(f"View repair request error: {e}")
-        flash("An error occurred loading the repair request.")
+        traceback.print_exc()
+        flash(f"An error occurred loading the repair request: {str(e)}")
         return redirect(url_for('repair_requests'))
 
 
@@ -941,6 +942,16 @@ def approve_repair_request(id):
                     asset_id = %s
                 WHERE id = %s
             """, (session.get('full_name'), datetime.now(), datetime.now(), asset_id, id))
+        else:
+            # Even if asset creation failed, update the status
+            cur.execute("""
+                UPDATE repair_requests 
+                SET status = 'Approved', 
+                    approved_by = %s, 
+                    approved_date = %s,
+                    updated_at = %s
+                WHERE id = %s
+            """, (session.get('full_name'), datetime.now(), datetime.now(), id))
         
         conn.commit()
         cur.close()
