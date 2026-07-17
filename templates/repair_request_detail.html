@@ -146,9 +146,11 @@
                         </span>
                     </div>
                     <div class="card-body">
-                        <h5>{{ request.issue_description }}</h5>
-                        
-                        <div class="row mt-3">
+                        <div class="row">
+                            <div class="col-12">
+                                <h6>Issue Description</h6>
+                                <p class="text-muted">{{ request.issue_description|linebreaks }}</p>
+                            </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Requested By</small>
                                 <p>{{ request.created_by }}</p>
@@ -204,17 +206,15 @@
                         </div>
 
                         <!-- Asset Created Success Message -->
-                        {% if request.status == 'Approved' %}
+                        {% if request.status == 'Approved' and request.asset_id %}
                         <div class="asset-created-alert mt-3">
                             <div class="d-flex align-items-start">
                                 <i class="bi bi-check-circle-fill text-success me-2 fs-4"></i>
                                 <div>
-                                    <strong>This repair request has been approved!</strong>
-                                    {% if request.asset_id %}
-                                        <br>The asset has been <a href="/view/{{ request.asset_id }}">added to the system</a> and is now available for assignment.
-                                    {% else %}
-                                        <br>The asset has been added to the system and is now available in the <a href="/">asset list</a>.
-                                    {% endif %}
+                                    <strong>Asset Created Successfully!</strong>
+                                    <br>The asset has been added to the system with tracking number 
+                                    <strong>{{ request.tracking_number }}</strong>.
+                                    <a href="/view/{{ request.asset_id }}">View Asset</a>
                                 </div>
                             </div>
                         </div>
