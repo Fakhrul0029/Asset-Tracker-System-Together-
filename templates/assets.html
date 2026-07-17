@@ -22,6 +22,7 @@
         body.dark-mode .text-dark { color: var(--dark-text) !important; }
         body.dark-mode .manage-group { background: #1e1e3f; border-color: #3a3a5c; }
         body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
+        body.dark-mode .row-retired { background-color: #2a1a1a !important; border-left: 5px solid #6c757d !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -54,11 +55,15 @@
         .btn-assign:hover { background: #f0fff4; }
         .btn-return { color: #fd7e14; }
         .btn-return:hover { background: #fff4e6; }
+        .btn-retire { color: #6c757d; border-right: 1px solid #dee2e6 !important; }
+        .btn-retire:hover { background: #f8f9fa; }
         .btn-del { color: #dc3545; border-left: 1px solid #dee2e6 !important; }
         .btn-del:hover { background: #fff5f5; }
         .row-deleted { background-color: #fff8f8 !important; border-left: 5px solid #dc3545 !important; opacity: 0.85; }
         .row-assigned { background-color: #e8f5e9 !important; border-left: 5px solid #198754 !important; }
+        .row-retired { background-color: #f5f5f5 !important; border-left: 5px solid #6c757d !important; }
         body.dark-mode .row-assigned { background-color: #1a3a1a !important; }
+        body.dark-mode .row-retired { background-color: #2a2a2a !important; }
         .table-container { background: white; border-radius: 15px; box-shadow: 0 4px 25px rgba(0,0,0,0.05); }
         .sortable { cursor: pointer; user-select: none; }
         .sortable:hover { background-color: #f8f9fa; }
@@ -99,6 +104,14 @@
         .repair-badge {
             background-color: #ffc107;
             color: #212529;
+            font-size: 0.6rem;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+        }
+        .retired-badge {
+            background-color: #6c757d;
+            color: white;
             font-size: 0.6rem;
             padding: 2px 8px;
             border-radius: 12px;
@@ -307,11 +320,16 @@
                     </thead>
                     <tbody>
                         {% for row in data %}
-                        <tr class="{{ 'row-deleted' if row.is_deleted else '' }} {{ 'row-assigned' if row.assigned_to else '' }}">
+                        <tr class="{{ 'row-deleted' if row.is_deleted else '' }} {{ 'row-assigned' if row.assigned_to else '' }} {{ 'row-retired' if row.status == 'Retired' else '' }}">
                             <td class="ps-4 fw-bold text-primary">
                                 {{ row.tracking_number }}
                                 {% if row.is_deleted %}
                                     <br><span class="badge bg-danger mt-1" style="font-size: 0.65rem;">ARCHIVED</span>
+                                {% endif %}
+                                {% if row.status == 'Retired' %}
+                                    <br><span class="badge retired-badge mt-1">
+                                        <i class="bi bi-archive me-1"></i>RETIRED
+                                    </span>
                                 {% endif %}
                                 {% if row.tracking_number and row.tracking_number.startswith('REP-') %}
                                     <br><span class="badge repair-badge mt-1">
@@ -333,10 +351,14 @@
                                     {% elif row.status == 'In Repair' %}bg-warning text-dark
                                     {% elif row.status == 'Waiting Parts' %}bg-warning text-dark
                                     {% elif row.status == 'Beyond Repair' %}bg-danger
+                                    {% elif row.status == 'Retired' %}bg-secondary
                                     {% else %}bg-secondary{% endif %} 
                                 shadow-sm">
                                     {{ row.status }}
                                 </span>
+                                {% if row.retired_date %}
+                                    <br><small class="text-muted">Retired: {{ row.retired_date.strftime('%Y-%m-%d') if row.retired_date else '' }}</small>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if row.assigned_to %}
@@ -372,6 +394,12 @@
                                             </form>
                                         {% else %}
                                             <button type="button" class="btn btn-assign" data-bs-toggle="modal" data-bs-target="#assignModal{{ row.id }}" title="Assign to User"><i class="bi bi-person-plus"></i></button>
+                                        {% endif %}
+                                        {% if row.status != 'Retired' and not row.is_deleted %}
+                                            <form action="/retire/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Retire this asset? This will mark it as retired.');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                <button type="submit" class="btn btn-retire" title="Retire Asset"><i class="bi bi-archive"></i></button>
+                                            </form>
                                         {% endif %}
                                     {% else %}
                                         {% if row.assigned_to == session.full_name or row.assigned_to == session.email %}
@@ -438,7 +466,7 @@
     <!-- Assign Modals (Admin only) -->
     {% if session.role == 'Admin' %}
         {% for row in data %}
-        {% if not row.assigned_to and not row.is_deleted %}
+        {% if not row.assigned_to and not row.is_deleted and row.status != 'Retired' %}
         <div class="modal fade" id="assignModal{{ row.id }}" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
