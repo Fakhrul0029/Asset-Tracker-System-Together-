@@ -69,6 +69,10 @@
         body.dark-mode .asset-created-alert {
             background: #1a3a1a;
         }
+        .description-text {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
     </style>
 </head>
 <body>
@@ -149,7 +153,7 @@
                         <div class="row">
                             <div class="col-12">
                                 <h6>Issue Description</h6>
-                                <p class="text-muted">{{ repair_req.issue_description|linebreaks }}</p>
+                                <p class="text-muted description-text">{{ repair_req.issue_description }}</p>
                             </div>
                             <div class="col-md-6">
                                 <small class="text-muted">Requested By</small>
