@@ -1527,274 +1527,132 @@ def export_excel():
         flash(f"Error exporting to Excel: {str(e)}")
         return redirect(url_for('index'))
 
-@app.route('/export/analytics_report')
-@login_required
-def export_analytics_report():
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('dashboard'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        
-        user_role = session.get('role')
-        user_email = session.get('email')
-        
-        if user_role == 'Admin':
-            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND asset_type IS NOT NULL GROUP BY asset_type")
-            by_type = cur.fetchall()
-            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND location IS NOT NULL GROUP BY location")
-            by_location = cur.fetchall()
-            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE GROUP BY status")
-            by_status = cur.fetchall()
-            cur.execute("SELECT COUNT(*) as total FROM assets WHERE is_deleted = FALSE")
-            total_assets = cur.fetchone()['total']
-        else:
-            cur.execute("SELECT asset_type, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND asset_type IS NOT NULL GROUP BY asset_type", (user_email, session.get('full_name')))
-            by_type = cur.fetchall()
-            cur.execute("SELECT location, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) AND location IS NOT NULL GROUP BY location", (user_email, session.get('full_name')))
-            by_location = cur.fetchall()
-            cur.execute("SELECT status, COUNT(*) as count FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s) GROUP BY status", (user_email, session.get('full_name')))
-            by_status = cur.fetchall()
-            cur.execute("SELECT COUNT(*) as total FROM assets WHERE is_deleted = FALSE AND (assigned_to = %s OR assigned_to = %s)", (user_email, session.get('full_name')))
-            total_assets = cur.fetchone()['total']
-        
-        cur.close()
-        conn.close()
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Asset Analytics Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #1a2a6c; }}
-                .report-title {{ color: #1a2a6c; font-size: 24px; }}
-                .report-date {{ color: #666; font-size: 14px; }}
-                .summary {{ background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 30px; }}
-                .summary h3 {{ margin-top: 0; color: #1a2a6c; }}
-                .summary-number {{ font-size: 36px; font-weight: bold; color: #1a2a6c; }}
-                .section {{ margin-bottom: 30px; }}
-                .section-title {{ background: #1a2a6c; color: white; padding: 10px; border-radius: 5px; }}
-                table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
-                th {{ background: #f0f0f0; }}
-                .footer {{ text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }}
-            </style>
-        </head>
-        <body>
-            <div class="header">
-                <h1 class="report-title">JTDI Asset Tracker - Analytics Report</h1>
-                <p class="report-date">Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-                <p>User: {session.get('full_name')} ({session.get('role')})</p>
-            </div>
-            
-            <div class="summary">
-                <h3>Summary</h3>
-                <div class="summary-number">{total_assets}</div>
-                <p>Total Assets in System</p>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Type</h3>
-                <table>
-                    <tr><th>Asset Type</th><th>Count</th></tr>
-        """
-        
-        for item in by_type:
-            html_content += f"<tr><td>{item['asset_type'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += """
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Department</h3>
-                <table>
-                    <tr><th>Department</th><th>Count</th></tr>
-        """
-        
-        for item in by_location:
-            html_content += f"<tr><td>{item['location'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += """
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Assets by Status</h3>
-                <table>
-                    <tr><th>Status</th><th>Count</th></tr>
-        """
-        
-        for item in by_status:
-            html_content += f"<tr><td>{item['status'] or 'Unknown'}</td><td>{item['count']}</td></tr>"
-        
-        html_content += f"""
-                </table>
-            </div>
-            
-            <div class="footer">
-                <p>JTDI Asset Tracker System - Confidential Report</p>
-                <p>This report was generated automatically. For questions, contact system administrator.</p>
-            </div>
-        </body>
-        </html>
-        """
-        
-        output = io.BytesIO()
-        output.write(html_content.encode('utf-8'))
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='text/html',
-            as_attachment=True,
-            download_name=f"analytics_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-        )
-    except Exception as e:
-        app.logger.error(f"Analytics report error: {e}")
-        flash("An error occurred generating the report.")
-        return redirect(url_for('dashboard'))
+# ==================== AUTHENTICATION ROUTES ====================
 
-@app.route('/export/repair_request/<int:id>')
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        session.clear()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+
+        allowed, error_msg = check_rate_limit(email)
+        if not allowed:
+            flash(error_msg)
+            return render_template('login.html')
+
+        try:
+            conn = get_db_connection()
+            if not conn:
+                flash("Database connection error. Please try again.")
+                return render_template('login.html')
+            
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
+            user = cur.fetchone()
+
+            if user and user['password'] == password:
+                if email in login_attempts:
+                    del login_attempts[email]
+
+                if user.get('first_login', True):
+                    session.permanent = True
+                    session.update({
+                        'user': user['username'],
+                        'role': user['role'],
+                        'full_name': user['full_name'] or user['username'],
+                        'email': user['email']
+                    })
+                    cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
+                               (user['full_name'] or user['username'], user['email']))
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    log_access(user['email'], "LOGIN")
+                    return redirect(url_for('change_password'))
+
+                session.permanent = True
+                session.update({
+                    'user': user['username'],
+                    'role': user['role'],
+                    'full_name': user['full_name'] or user['username'],
+                    'email': user['email']
+                })
+                cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
+                           (user['full_name'] or user['username'], user['email']))
+                conn.commit()
+                cur.close()
+                conn.close()
+                log_access(user['email'], "LOGIN")
+                return redirect(url_for('dashboard'))
+            else:
+                if email not in login_attempts:
+                    login_attempts[email] = []
+                login_attempts[email].append(datetime.now())
+
+            cur.close()
+            conn.close()
+            flash("Invalid email or password.")
+        except Exception as e:
+            app.logger.error(f"Login error: {e}")
+            flash("An error occurred during login. Please try again.")
+
+    return render_template('login.html')
+
+@app.route('/change_password', methods=['GET', 'POST'])
 @login_required
-def export_repair_request(id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            flash("Database connection error.")
-            return redirect(url_for('index'))
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        cur.execute("SELECT * FROM assets WHERE id = %s", (id,))
-        asset = cur.fetchone()
-        cur.close()
-        conn.close()
+def change_password():
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
         
-        if not asset:
-            flash("Asset not found.")
-            return redirect(url_for('index'))
+        if new_password != confirm_password:
+            flash("New passwords do not match.")
+            return render_template('change_password.html')
         
-        maintenance_count = get_maintenance_count(id)
+        is_valid, msg = validate_password_complexity(new_password)
+        if not is_valid:
+            flash(msg)
+            return render_template('change_password.html')
         
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Parts Request Report</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .header {{ text-align: center; margin-bottom: 30px; border-bottom: 2px solid #dc3545; padding-bottom: 20px; }}
-                .title {{ color: #dc3545; font-size: 24px; }}
-                .asset-info {{ background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-                .info-row {{ margin-bottom: 10px; }}
-                .info-label {{ font-weight: bold; width: 150px; display: inline-block; }}
-                .section {{ margin-bottom: 30px; }}
-                .section-title {{ background: #dc3545; color: white; padding: 10px; border-radius: 5px; }}
-                .parts-table {{ width: 100%; border-collapse: collapse; margin-top: 15px; }}
-                .parts-table th, .parts-table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                .parts-table th {{ background: #f0f0f0; }}
-                .signature {{ margin-top: 40px; }}
-                .signature-line {{ margin-top: 30px; display: flex; justify-content: space-between; }}
-                .footer {{ margin-top: 40px; text-align: center; font-size: 12px; color: #666; }}
-                .maintenance-count {{ font-size: 18px; font-weight: bold; color: #dc3545; }}
-                @media print {{
-                    body {{ margin: 0; }}
-                    .no-print {{ display: none; }}
-                }}
-            </style>
-        </head>
-        <body>
-            <div class="no-print" style="text-align: right; margin-bottom: 20px;">
-                <button onclick="window.print()" style="padding: 10px 20px; background: #1a2a6c; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                    Print / Save as PDF
-                </button>
-            </div>
+        try:
+            conn = get_db_connection()
+            if not conn:
+                flash("Database connection error.")
+                return render_template('change_password.html')
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute("SELECT password FROM users WHERE email = %s", (session.get('email'),))
+            user = cur.fetchone()
             
-            <div class="header">
-                <h1 class="title">PARTS REQUEST REPORT</h1>
-                <p>JTDI Asset Tracker System</p>
-                <p>Date: {datetime.now().strftime('%Y-%m-%d')}</p>
-            </div>
+            if user and user['password'] == current_password:
+                cur.execute("UPDATE users SET password = %s, first_login = FALSE WHERE email = %s", 
+                           (new_password, session.get('email')))
+                conn.commit()
+                flash("Password changed successfully! Please login again.")
+                session.clear()
+                cur.close()
+                conn.close()
+                return redirect(url_for('login'))
+            else:
+                flash("Current password is incorrect.")
             
-            <div class="asset-info">
-                <h3>Asset Information</h3>
-                <div class="info-row"><span class="info-label">Asset ID:</span> {asset['id']}</div>
-                <div class="info-row"><span class="info-label">Tracking Number:</span> {asset['tracking_number']}</div>
-                <div class="info-row"><span class="info-label">Asset Name/Model:</span> {asset['cpu_name'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Serial Number:</span> {asset['serial_number']}</div>
-                <div class="info-row"><span class="info-label">Asset Type:</span> {asset['asset_type'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Department:</span> {asset['location'] or 'N/A'}</div>
-                <div class="info-row"><span class="info-label">Repair Status:</span> <strong style="color: #dc3545;">Waiting Parts</strong></div>
-                <div class="info-row"><span class="info-label">Total Maintenance Cases:</span> <span class="maintenance-count">{maintenance_count}</span></div>
-                <div class="info-row"><span class="info-label">Requested By:</span> {session.get('full_name')}</div>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Required Parts / Components</h3>
-                <table class="parts-table">
-                    <thead>
-                        <tr><th>No.</th><th>Part Name</th><th>Quantity</th><th>Estimated Cost (RM)</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td>1</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>2</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>3</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>4</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                        <tr><td>5</td><td style="height: 40px;"></td><td></td><td></td></tr>
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="section">
-                <h3 class="section-title">Remarks / Notes</h3>
-                <div style="height: 100px; border: 1px solid #ddd; padding: 10px; margin-top: 10px;"></div>
-            </div>
-            
-            <div class="signature">
-                <div class="signature-line">
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Requested By (Technician)</p>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Approved By (Supervisor)</p>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="height: 60px;"></div>
-                        <div style="border-top: 1px solid #000; width: 200px;"></div>
-                        <p>Received By (Store)</p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="footer">
-                <p>This is a system-generated parts request. Please complete all required sections.</p>
-            </div>
-        </body>
-        </html>
-        """
+            cur.close()
+            conn.close()
+        except Exception as e:
+            app.logger.error(f"Password change error: {e}")
+            flash("An error occurred changing password.")
         
-        output = io.BytesIO()
-        output.write(html_content.encode('utf-8'))
-        output.seek(0)
-        
-        return send_file(
-            output,
-            mimetype='text/html',
-            as_attachment=True,
-            download_name=f"parts_request_{asset['tracking_number']}_{datetime.now().strftime('%Y%m%d')}.html"
-        )
-    except Exception as e:
-        app.logger.error(f"Parts request error: {e}")
-        flash("An error occurred generating the parts request.")
-        return redirect(url_for('index'))
+        return render_template('change_password.html')
+    
+    return render_template('change_password.html')
+
+@app.route('/logout')
+def logout():
+    if session.get('email'):
+        log_access(session['email'], "LOGOUT")
+    session.clear()
+    return redirect(url_for('login'))
 
 # ==================== ADMIN ROUTES ====================
 
@@ -2020,133 +1878,6 @@ def backup_database():
         app.logger.error(f"Database backup error: {e}")
         flash("An error occurred during database backup.")
         return redirect(url_for('admin_dashboard'))
-
-# ==================== LOGIN ROUTES ====================
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        session.clear()
-        email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '')
-
-        allowed, error_msg = check_rate_limit(email)
-        if not allowed:
-            flash(error_msg)
-            return render_template('login.html')
-
-        try:
-            conn = get_db_connection()
-            if not conn:
-                flash("Database connection error. Please try again.")
-                return render_template('login.html')
-            
-            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
-            user = cur.fetchone()
-
-            if user and user['password'] == password:
-                if email in login_attempts:
-                    del login_attempts[email]
-
-                if user.get('first_login', True):
-                    session.permanent = True
-                    session.update({
-                        'user': user['username'],
-                        'role': user['role'],
-                        'full_name': user['full_name'] or user['username'],
-                        'email': user['email']
-                    })
-                    cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
-                               (user['full_name'] or user['username'], user['email']))
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    log_access(user['email'], "LOGIN")
-                    return redirect(url_for('change_password'))
-
-                session.permanent = True
-                session.update({
-                    'user': user['username'],
-                    'role': user['role'],
-                    'full_name': user['full_name'] or user['username'],
-                    'email': user['email']
-                })
-                cur.execute("INSERT INTO login_logs (full_name, email) VALUES (%s, %s)",
-                           (user['full_name'] or user['username'], user['email']))
-                conn.commit()
-                cur.close()
-                conn.close()
-                log_access(user['email'], "LOGIN")
-                return redirect(url_for('dashboard'))
-            else:
-                if email not in login_attempts:
-                    login_attempts[email] = []
-                login_attempts[email].append(datetime.now())
-
-            cur.close()
-            conn.close()
-            flash("Invalid email or password.")
-        except Exception as e:
-            app.logger.error(f"Login error: {e}")
-            flash("An error occurred during login. Please try again.")
-
-    return render_template('login.html')
-
-@app.route('/change_password', methods=['GET', 'POST'])
-@login_required
-def change_password():
-    if request.method == 'POST':
-        current_password = request.form.get('current_password', '')
-        new_password = request.form.get('new_password', '')
-        confirm_password = request.form.get('confirm_password', '')
-        
-        if new_password != confirm_password:
-            flash("New passwords do not match.")
-            return render_template('change_password.html')
-        
-        is_valid, msg = validate_password_complexity(new_password)
-        if not is_valid:
-            flash(msg)
-            return render_template('change_password.html')
-        
-        try:
-            conn = get_db_connection()
-            if not conn:
-                flash("Database connection error.")
-                return render_template('change_password.html')
-            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-            cur.execute("SELECT password FROM users WHERE email = %s", (session.get('email'),))
-            user = cur.fetchone()
-            
-            if user and user['password'] == current_password:
-                cur.execute("UPDATE users SET password = %s, first_login = FALSE WHERE email = %s", 
-                           (new_password, session.get('email')))
-                conn.commit()
-                flash("Password changed successfully! Please login again.")
-                session.clear()
-                cur.close()
-                conn.close()
-                return redirect(url_for('login'))
-            else:
-                flash("Current password is incorrect.")
-            
-            cur.close()
-            conn.close()
-        except Exception as e:
-            app.logger.error(f"Password change error: {e}")
-            flash("An error occurred changing password.")
-        
-        return render_template('change_password.html')
-    
-    return render_template('change_password.html')
-
-@app.route('/logout')
-def logout():
-    if session.get('email'):
-        log_access(session['email'], "LOGOUT")
-    session.clear()
-    return redirect(url_for('login'))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
