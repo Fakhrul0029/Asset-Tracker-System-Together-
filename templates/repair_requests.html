@@ -62,6 +62,13 @@
         body.dark-mode .request-timestamp {
             color: #999;
         }
+        .asset-link {
+            color: #0d6efd;
+            text-decoration: none;
+        }
+        .asset-link:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -144,17 +151,22 @@
                             {% else %}badge-rejected{% endif %} 
                         ms-1">{{ req.status }}</span>
                         <span class="badge bg-secondary ms-1">{{ req.priority }}</span>
+                        {% if req.asset_id %}
+                            <span class="badge bg-success ms-1">
+                                <i class="bi bi-check-circle me-1"></i>Asset Created
+                            </span>
+                        {% endif %}
                     </div>
                     <span class="request-timestamp">{{ req.created_at.strftime('%Y-%m-%d %H:%M') if req.created_at else '' }}</span>
                 </div>
                 <div class="mt-1">
-                    <strong>Issue:</strong> {{ req.issue_description[:150] }}{% if req.issue_description|length > 150 %}...{% endif %}
+                    <strong>Issue:</strong> {{ req.issue_description[:200] }}{% if req.issue_description|length > 200 %}...{% endif %}
                 </div>
                 <div class="mt-1">
                     <small class="text-muted">
                         <i class="bi bi-box me-1"></i>
                         {% if req.asset_name %}
-                            {{ req.asset_name }} ({{ req.tracking_number }})
+                            <a href="/view/{{ req.asset_id }}" class="asset-link">{{ req.asset_name }} ({{ req.tracking_number }})</a>
                         {% else %}
                             No Asset Selected
                         {% endif %}
