@@ -16,7 +16,6 @@
         body.dark-mode .activity-item { background: #1e1e3f; border-left-color: var(--gold); }
         body.dark-mode .text-muted { color: #999 !important; }
         body.dark-mode .text-dark { color: var(--dark-text) !important; }
-        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -55,9 +54,6 @@
             background: #2a2a4a;
             color: #ddd;
         }
-        .bg-purple { background-color: #6f42c1; color: white; }
-        .stat-card-small { border: none; border-radius: 12px; color: white; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.08); cursor: pointer; }
-        .stat-card-small:hover { transform: translateY(-3px); }
     </style>
 </head>
 <body>
@@ -80,9 +76,6 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/completed_assets"><i class="bi bi-check-circle me-1"></i>Completed</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/repair_requests"><i class="bi bi-tools me-1"></i>Repair Requests</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/activity"><i class="bi bi-clock-history me-1"></i>Activity</a>
@@ -112,6 +105,7 @@
     </nav>
 
     <div class="container py-4">
+        <!-- Welcome Header -->
         <div class="dashboard-header">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
@@ -130,89 +124,81 @@
             </div>
         </div>
 
+        <!-- Statistics Cards -->
         <div class="row g-4 mb-4">
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-primary" onclick="window.location.href='/'">
+                <div class="card stat-card p-3 bg-primary" onclick="window.location.href='/'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <h6 class="small fw-bold text-uppercase opacity-75">Total Assets</h6>
-                            <h2 class="mb-0">{{ stats.total }}</h2>
+                            <h2 class="mb-0">{{ total }}</h2>
                         </div>
                         <i class="bi bi-box-seam fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-success" onclick="window.location.href='/?status=Available'">
+                <div class="card stat-card p-3 bg-success" onclick="window.location.href='/?status=Working'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Available</h6>
-                            <h2 class="mb-0">{{ stats.available }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Working</h6>
+                            <h2 class="mb-0">{{ working }}</h2>
                         </div>
                         <i class="bi bi-check-circle fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
-                <div class="card stat-card p-4 bg-primary" onclick="window.location.href='/?status=Assigned'">
+                <div class="card stat-card p-3 bg-warning text-dark" onclick="window.location.href='/?status=Maintenance'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Assigned</h6>
-                            <h2 class="mb-0">{{ stats.assigned }}</h2>
-                        </div>
-                        <i class="bi bi-person-check fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3">
-                <div class="card stat-card p-4 bg-warning text-dark" onclick="window.location.href='/?status=In Repair'">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">In Repair</h6>
-                            <h2 class="mb-0">{{ stats.in_repair }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Maintenance</h6>
+                            <h2 class="mb-0">{{ maint }}</h2>
                         </div>
                         <i class="bi bi-tools fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="card stat-card p-3 bg-danger" onclick="window.location.href='/?status=Faulty'">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Faulty</h6>
+                            <h2 class="mb-0">{{ faulty }}</h2>
+                        </div>
+                        <i class="bi bi-exclamation-triangle fs-1 opacity-50"></i>
+                    </div>
+                </div>
+            </div>
         </div>
 
+        <!-- Assignment Status -->
         <div class="row g-4 mb-4">
-            <div class="col-md-4">
-                <div class="card stat-card-small p-3 bg-warning text-dark" onclick="window.location.href='/repair_requests'">
+            <div class="col-md-6">
+                <div class="card stat-card p-3 bg-info" onclick="window.location.href='/?assigned=yes'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Pending Repairs</h6>
-                            <h2 class="mb-0">{{ pending_repairs }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Assigned Assets</h6>
+                            <h2 class="mb-0">{{ assigned }}</h2>
                         </div>
-                        <i class="bi bi-clock-history fs-1 opacity-50"></i>
+                        <i class="bi bi-person-check fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
-                <div class="card stat-card-small p-3 bg-success" onclick="window.location.href='/repair_requests?status=Approved'">
+            <div class="col-md-6">
+                <div class="card stat-card p-3 bg-secondary" onclick="window.location.href='/?assigned=no'">
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Approved Repairs</h6>
-                            <h2 class="mb-0">{{ approved_repairs }}</h2>
+                            <h6 class="small fw-bold text-uppercase opacity-75">Available Assets</h6>
+                            <h2 class="mb-0">{{ total - assigned }}</h2>
                         </div>
-                        <i class="bi bi-check-circle fs-1 opacity-50"></i>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card stat-card-small p-3 bg-purple" onclick="window.location.href='/repair_requests?status=Completed'">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="small fw-bold text-uppercase opacity-75">Completed Repairs</h6>
-                            <h2 class="mb-0">{{ completed_repairs }}</h2>
-                        </div>
-                        <i class="bi bi-check2-all fs-1 opacity-50"></i>
+                        <i class="bi bi-inbox fs-1 opacity-50"></i>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- Analytics Charts Section -->
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h5 class="fw-bold mb-0"><i class="bi bi-graph-up me-2"></i>Analytics Overview</h5>
             <a href="/export/analytics_report" class="btn btn-sm btn-outline-primary">
@@ -277,6 +263,7 @@
             </div>
         </div>
 
+        <!-- Recent Activity -->
         <div class="row g-4">
             <div class="col-12">
                 <div class="card chart-card p-4">
@@ -288,9 +275,6 @@
                                 <div>
                                     <strong>{{ log.user_email }}</strong>
                                     <span class="badge bg-secondary ms-2">{{ log.action }}</span>
-                                    {% if log.details %}
-                                    <br><small class="text-muted">{{ log.details }}</small>
-                                    {% endif %}
                                 </div>
                                 <small class="text-muted">{{ log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else '' }}</small>
                             </div>
@@ -329,6 +313,7 @@
             }
         }, sessionTimeout - warningTime);
 
+        // Chart 1: Assets by Type (Doughnut)
         const typeLabels = {{ type_labels|tojson }};
         const typeData = {{ type_data|tojson }};
         
@@ -359,6 +344,7 @@
             });
         }
 
+        // Chart 2: Assets by Department (Bar)
         const locationLabels = {{ location_labels|tojson }};
         const locationData = {{ location_data|tojson }};
         
@@ -390,6 +376,7 @@
             });
         }
 
+        // Chart 3: Assets by Status (Pie)
         const statusLabels = {{ status_labels|tojson }};
         const statusData = {{ status_data|tojson }};
         
@@ -400,7 +387,7 @@
                     labels: statusLabels,
                     datasets: [{ 
                         data: statusData, 
-                        backgroundColor: ['#28a745', '#0d6efd', '#6f42c1', '#ffc107', '#fd7e14', '#dc3545', '#6c757d'],
+                        backgroundColor: ['#28a745', '#ffc107', '#dc3545', '#17a2b8', '#6c757d', '#fd7e14'],
                         borderWidth: 0,
                         hoverOffset: 10
                     }]
