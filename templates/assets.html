@@ -20,9 +20,8 @@
         body.dark-mode .btn-close { filter: invert(1); }
         body.dark-mode .text-muted { color: #999 !important; }
         body.dark-mode .text-dark { color: var(--dark-text) !important; }
-        body.dark-mode .manage-group { background: #1e1e3f; border-color: #3a3a5c; }
-        body.dark-mode .bg-purple { background-color: #4a2d7a !important; }
-        body.dark-mode .row-retired { background-color: #2a1a1a !important; border-left: 5px solid #6c757d !important; }
+        body.dark-mode .action-buttons .btn { background: #1e1e3f; border-color: #3a3a5c; }
+        body.dark-mode .action-buttons .btn:hover { background: #2a2a4a; }
         .navbar {
             background: linear-gradient(90deg, #1a2a6c 0%, #203a43 100%);
             border-bottom: 4px solid var(--gold);
@@ -37,35 +36,58 @@
         .user-badge { background: rgba(255,193,7,0.15); color: var(--gold); padding: 4px 12px; border-radius: 20px; font-size: 0.85rem; }
         .stat-card { border: none; border-radius: 12px; color: white; transition: all 0.3s ease; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
         .stat-card:hover { transform: translateY(-3px); }
-        .manage-group {
-            display: inline-flex; border-radius: 8px; overflow: hidden;
-            border: 1px solid #dee2e6; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            justify-content: center;
+            align-items: center;
+            min-width: 200px;
         }
-        .manage-group .btn {
-            padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 500;
-            border-radius: 0; border: none; transition: all 0.2s;
+        .action-buttons .btn {
+            padding: 4px 8px;
+            font-size: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            background: white;
+            transition: all 0.2s;
+            line-height: 1.4;
+            min-width: 32px;
+            text-align: center;
         }
-        .btn-view { color: #0d6efd; border-right: 1px solid #dee2e6 !important; }
-        .btn-view:hover { background: #f0f7ff; }
-        .btn-edit { color: #212529; border-right: 1px solid #dee2e6 !important; }
-        .btn-edit:hover { background: #f8f9fa; }
-        .btn-qr { background: #212529 !important; color: white !important; }
-        .btn-qr:hover { background: #000 !important; }
-        .btn-assign { color: #198754; border-right: 1px solid #dee2e6 !important; }
-        .btn-assign:hover { background: #f0fff4; }
-        .btn-return { color: #fd7e14; }
-        .btn-return:hover { background: #fff4e6; }
-        .btn-retire { color: #6c757d; border-right: 1px solid #dee2e6 !important; }
-        .btn-retire:hover { background: #f8f9fa; }
-        .btn-del { color: #dc3545; border-left: 1px solid #dee2e6 !important; }
-        .btn-del:hover { background: #fff5f5; }
+        .action-buttons .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .action-buttons .btn-view { color: #0d6efd; }
+        .action-buttons .btn-view:hover { background: #e7f1ff; border-color: #0d6efd; }
+        .action-buttons .btn-edit { color: #6c757d; }
+        .action-buttons .btn-edit:hover { background: #f8f9fa; border-color: #6c757d; }
+        .action-buttons .btn-qr { color: #212529; background: #212529; color: white; }
+        .action-buttons .btn-qr:hover { background: #000; border-color: #000; }
+        .action-buttons .btn-repair { color: #ffc107; }
+        .action-buttons .btn-repair:hover { background: #fff8e1; border-color: #ffc107; }
+        .action-buttons .btn-assign { color: #198754; }
+        .action-buttons .btn-assign:hover { background: #e8f5e9; border-color: #198754; }
+        .action-buttons .btn-return { color: #fd7e14; }
+        .action-buttons .btn-return:hover { background: #fff4e6; border-color: #fd7e14; }
+        .action-buttons .btn-retire { color: #6c757d; }
+        .action-buttons .btn-retire:hover { background: #f8f9fa; border-color: #6c757d; }
+        .action-buttons .btn-del { color: #dc3545; }
+        .action-buttons .btn-del:hover { background: #fff5f5; border-color: #dc3545; }
+        .action-buttons form {
+            display: inline-block;
+            margin: 0;
+        }
+        
         .row-deleted { background-color: #fff8f8 !important; border-left: 5px solid #dc3545 !important; opacity: 0.85; }
         .row-assigned { background-color: #e8f5e9 !important; border-left: 5px solid #198754 !important; }
         .row-retired { background-color: #f5f5f5 !important; border-left: 5px solid #6c757d !important; }
         body.dark-mode .row-assigned { background-color: #1a3a1a !important; }
         body.dark-mode .row-retired { background-color: #2a2a2a !important; }
-        .table-container { background: white; border-radius: 15px; box-shadow: 0 4px 25px rgba(0,0,0,0.05); }
-        .sortable { cursor: pointer; user-select: none; }
+        .table-container { background: white; border-radius: 15px; box-shadow: 0 4px 25px rgba(0,0,0,0.05); overflow: hidden; }
+        .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
         .sortable:hover { background-color: #f8f9fa; }
         body.dark-mode .sortable:hover { background-color: #2a2a4a; }
         .sortable i { opacity: 0.3; }
@@ -94,7 +116,7 @@
         .badge-available { background-color: #6c757d; }
         .bg-purple { background-color: #6f42c1; color: white; }
         .maintenance-count-badge {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             padding: 2px 8px;
             border-radius: 20px;
         }
@@ -120,6 +142,15 @@
         body.dark-mode .repair-badge {
             background-color: #ffc107;
             color: #212529;
+        }
+        .table td {
+            vertical-align: middle;
+        }
+        .table th {
+            white-space: nowrap;
+        }
+        .action-buttons .btn i {
+            font-size: 0.9rem;
         }
     </style>
 </head>
@@ -174,16 +205,13 @@
         </div>
     </nav>
 
-    <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-spinner"></div>
     </div>
 
-    <!-- Toast Container -->
     <div class="toast-container" id="toastContainer"></div>
 
     <div class="container py-4">
-        <!-- Role Info Banner -->
         <div class="alert alert-info alert-dismissible fade show mb-4" role="alert">
             <i class="bi bi-info-circle me-2"></i>
             {% if session.role == 'Admin' %}
@@ -272,7 +300,6 @@
                     </div>
                 </div>
             </form>
-            <!-- Date Range Filter -->
             <div class="row mt-3">
                 <div class="col-md-4">
                     <label class="form-label small fw-bold text-muted">Date From</label>
@@ -314,8 +341,8 @@
                             </th>
                             <th>Assigned To</th>
                             <th>Owner Name</th>
-                            <th class="text-center">Maintenance</th>
-                            <th class="text-center">Actions</th>
+                            <th class="text-center">Maint.</th>
+                            <th class="text-center" style="min-width: 220px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -378,39 +405,55 @@
                                     {{ mc }}
                                 </span>
                             </td>
-                            <td class="text-center">
-                                <div class="manage-group">
-                                    <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details"><i class="bi bi-eye"></i></a>
-                                    <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset"><i class="bi bi-pencil"></i></a>
-                                    <a href="/qr/{{ row.id }}" class="btn btn-qr" title="Generate QR Code"><i class="bi bi-qr-code"></i></a>
-                                    <a href="/repair_request/new?asset_id={{ row.id }}" class="btn btn-assign" title="Create Repair Request" style="color: #ffc107; border-right: 1px solid #dee2e6 !important;">
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/view/{{ row.id }}" class="btn btn-view" title="View Details">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="/edit/{{ row.id }}" class="btn btn-edit" title="Edit Asset">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="/qr/{{ row.id }}" class="btn btn-qr" title="Generate QR Code">
+                                        <i class="bi bi-qr-code"></i>
+                                    </a>
+                                    <a href="/repair_request/new?asset_id={{ row.id }}" class="btn btn-repair" title="Create Repair Request">
                                         <i class="bi bi-tools"></i>
                                     </a>
                                     {% if session.role == 'Admin' %}
                                         {% if row.assigned_to %}
-                                            <form action="/return/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Return this asset? It will become available.');">
+                                            <form action="/return/{{ row.id }}" method="POST" onsubmit="return confirm('Return this asset? It will become available.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                <button type="submit" class="btn btn-return" title="Return Asset"><i class="bi bi-arrow-return-left"></i></button>
+                                                <button type="submit" class="btn btn-return" title="Return Asset">
+                                                    <i class="bi bi-arrow-return-left"></i>
+                                                </button>
                                             </form>
                                         {% else %}
-                                            <button type="button" class="btn btn-assign" data-bs-toggle="modal" data-bs-target="#assignModal{{ row.id }}" title="Assign to User"><i class="bi bi-person-plus"></i></button>
+                                            <button type="button" class="btn btn-assign" data-bs-toggle="modal" data-bs-target="#assignModal{{ row.id }}" title="Assign to User">
+                                                <i class="bi bi-person-plus"></i>
+                                            </button>
                                         {% endif %}
                                         {% if row.status != 'Retired' and not row.is_deleted %}
-                                            <form action="/retire/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Retire this asset? This will mark it as retired.');">
+                                            <form action="/retire/{{ row.id }}" method="POST" onsubmit="return confirm('Retire this asset? This will mark it as retired.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                <button type="submit" class="btn btn-retire" title="Retire Asset"><i class="bi bi-archive"></i></button>
+                                                <button type="submit" class="btn btn-retire" title="Retire Asset">
+                                                    <i class="bi bi-archive"></i>
+                                                </button>
                                             </form>
                                         {% endif %}
                                     {% else %}
                                         {% if row.assigned_to == session.full_name or row.assigned_to == session.email %}
-                                            <form action="/return/{{ row.id }}" method="POST" class="d-inline" onsubmit="return confirm('Return this asset? It will become available.');">
+                                            <form action="/return/{{ row.id }}" method="POST" onsubmit="return confirm('Return this asset? It will become available.');">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                                <button type="submit" class="btn btn-return" title="Return Asset"><i class="bi bi-arrow-return-left"></i></button>
+                                                <button type="submit" class="btn btn-return" title="Return Asset">
+                                                    <i class="bi bi-arrow-return-left"></i>
+                                                </button>
                                             </form>
                                         {% endif %}
                                     {% endif %}
                                     {% if not row.is_deleted and session.role == 'Admin' %}
-                                        <button type="button" class="btn btn-del" onclick="confirmDelete('{{ row.tracking_number }}', {{ row.id }})" title="Archive"><i class="bi bi-archive"></i></button>
+                                        <button type="button" class="btn btn-del" onclick="confirmDelete('{{ row.tracking_number }}', {{ row.id }})" title="Archive">
+                                            <i class="bi bi-archive"></i>
+                                        </button>
                                     {% endif %}
                                 </div>
                             </td>
@@ -435,7 +478,6 @@
             {% endif %}
         </div>
 
-        <!-- Pagination -->
         {% if total_pages > 1 %}
         <nav class="mt-4">
             <ul class="pagination justify-content-center">
@@ -463,7 +505,6 @@
         {% endif %}
     </div>
 
-    <!-- Assign Modals (Admin only) -->
     {% if session.role == 'Admin' %}
         {% for row in data %}
         {% if not row.assigned_to and not row.is_deleted and row.status != 'Retired' %}
