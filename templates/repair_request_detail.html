@@ -171,7 +171,6 @@
                             {% endif %}
                         </div>
 
-                        <!-- Asset Created Success Message -->
                         {% if repair_req.status == 'Approved' and repair_req.asset_id %}
                         <div class="asset-created-alert mt-3">
                             <div class="d-flex align-items-start">
@@ -188,7 +187,6 @@
                         </div>
                         {% endif %}
 
-                        <!-- Admin Actions -->
                         {% if is_admin %}
                         <hr>
                         <div class="row g-2">
@@ -230,7 +228,6 @@
                     </div>
                 </div>
 
-                <!-- Comments -->
                 <div class="card">
                     <div class="card-header">
                         <i class="bi bi-chat-dots me-2"></i>Comments ({{ comments|length }})
@@ -288,40 +285,6 @@
                         <div class="d-flex justify-content-between mb-2">
                             <span class="text-muted">Created</span>
                             <span>{{ repair_req.created_at.strftime('%Y-%m-%d %H:%M') if repair_req.created_at else '' }}</span>
-                        </div>
-                        {% if repair_req.updated_at and repair_req.updated_at != repair_req.created_at %}
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="text-muted">Updated</span>
-                            <span>{{ repair_req.updated_at.strftime('%Y-%m-%d %H:%M') if repair_req.updated_at else '' }}</span>
-                        </div>
-                        {% endif %}
-                        <hr>
-                        <div class="status-history">
-                            <small class="text-muted">Status History</small>
-                            <div class="mt-2">
-                                <div class="d-flex justify-content-between">
-                                    <span>Created</span>
-                                    <span class="badge badge-pending">Pending</span>
-                                </div>
-                                {% if repair_req.approved_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Approved</span>
-                                    <span class="badge badge-approved">Approved</span>
-                                </div>
-                                {% endif %}
-                                {% if repair_req.sent_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Sent to JTDI</span>
-                                    <span class="badge badge-sent">Sent</span>
-                                </div>
-                                {% endif %}
-                                {% if repair_req.completed_date %}
-                                <div class="d-flex justify-content-between mt-1">
-                                    <span>Completed</span>
-                                    <span class="badge badge-completed">Completed</span>
-                                </div>
-                                {% endif %}
-                            </div>
                         </div>
                         <hr>
                         <a href="/repair_requests" class="btn btn-secondary btn-sm w-100">
